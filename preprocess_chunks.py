@@ -1,8 +1,21 @@
-
 import os
 import torchaudio
 import torch
 import torchaudio.transforms as T
+
+# Optional: Define custom start seconds for each subgenre
+start_seconds = {
+    "Chill House": 30,
+    "Banger House": 30,
+    "Party Techno": 0,
+    "Schiebender Techno": 60,
+    "Emotional + melancholic Techno": 0,
+    "Hard Techno": 10,
+    "Banger Goa": 30,
+    "Chiller vibe Goa": 30,
+    "Arsch Goa": 0,
+    # Add more entries as needed
+}
 
 def preprocess_music_folder(root_dir, target_sr=16000, window_duration=75, chunk_count=3, output_dir="preprocessed_chunks"):
     os.makedirs(output_dir, exist_ok=True)
@@ -20,7 +33,7 @@ def preprocess_music_folder(root_dir, target_sr=16000, window_duration=75, chunk
             if not os.path.isdir(subgenre_path):
                 continue
 
-            label = subgenre_folder  # playlist name
+            label = subgenre_folder
             label_dir = os.path.join(output_dir, label)
             os.makedirs(label_dir, exist_ok=True)
 
@@ -38,14 +51,20 @@ def preprocess_music_folder(root_dir, target_sr=16000, window_duration=75, chunk
                         resampler = T.Resample(orig_freq=sr, new_freq=target_sr)
                         waveform = resampler(waveform)
 
-                    if waveform.size(0) < total_samples:
-                        padding = torch.zeros(total_samples - waveform.size(0))
-                        waveform = torch.cat([waveform, padding])
-                        start = 0
-                    else:
-                        start = (waveform.size(0) - total_samples) // 2
+                    total_audio_samples = waveform.size(0)
 
-                    window = waveform[start: start + total_samples]
+                    if total_audio_samples < total_samples:
+                        padding = torch.zeros(total_samples - total_audio_samples)
+                        waveform = torch.cat([waveform, padding])
+                        start_sample = 0
+                    else:
+                        start_sec = start_seconds.get(subgenre_folder, None)
+                        if start_sec is not None:
+                            start_sample = min(start_sec * target_sr, total_audio_samples - total_samples)
+                        else:
+                            start_sample = (total_audio_samples - total_samples) // 2
+
+                    window = waveform[start_sample: start_sample + total_samples]
                     chunk_len = total_samples // chunk_count
 
                     for i in range(chunk_count):
