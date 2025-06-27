@@ -11,7 +11,7 @@ start_seconds = {
     "Schiebender Techno": 60,
     "Emotional + melancholic Techno": 0,
     "Hard Techno": 10,
-    "Banger Goa": 30,
+    "Banger Goa": 15,
     "Chiller vibe Goa": 30,
     "Arsch Goa": 0,
     # Add more entries as needed
