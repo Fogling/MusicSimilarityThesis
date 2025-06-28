@@ -114,19 +114,24 @@ def main():
     tracks = get_spotify_tracks(sp, SPOTIFY_PLAYLIST_URL)
     print(f"Found {len(tracks)} tracks.")
 
-    playlist_name = "Genau dieser Techno Test1"
+    playlist_name = "Converted from Spotify"
     print(f"Creating YouTube playlist: {playlist_name}")
     yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
 
-    for query in tracks:
-        print(f"Searching: {query}")
+    start_index = int(input(f"Enter the start index (0-{len(tracks)-1:03}) or 0 to start from the beginning: "))
+
+    for idx, query in enumerate(tracks):
+        if idx < start_index:
+            continue  # Skip songs before start_index
+
+        print(f"[{idx}] Searching: {query}")
         video_id = search_youtube_video(youtube, query)
         if video_id:
             print(f"Adding video: https://youtube.com/watch?v={video_id}")
             add_video_to_playlist(youtube, yt_playlist_id, video_id)
         else:
             print("No match found.")
-        time.sleep(1)  # to avoid quota issues
+
 
     print("Done!")
 
