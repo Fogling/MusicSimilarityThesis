@@ -6,10 +6,10 @@ import json
 import time
 
 # ---- SET THESE ----
-SPOTIFY_CLIENT_ID = "your_spotify_client_id"
-SPOTIFY_CLIENT_SECRET = "your_spotify_client_secret"
-SPOTIFY_REDIRECT_URI = "http://localhost:8888/callback"
-SPOTIFY_PLAYLIST_URL = "your_spotify_playlist_url"
+SPOTIFY_CLIENT_ID = "c8f4b187f2b745f1ba363a67f69b15b3"
+SPOTIFY_CLIENT_SECRET = "8ae23b17695a4455b9ef9e603abfc06d"
+SPOTIFY_REDIRECT_URI = "https://b78a-2003-c4-2747-d59c-8d24-56d-8a2f-eb44.ngrok-free.app"
+SPOTIFY_PLAYLIST_URL = "https://open.spotify.com/playlist/7FjrRssMtynYXoHeVsporB?si=d6fc8e396eac450d"
 YOUTUBE_CLIENT_SECRET_FILE = "client_secrets.json"  # Downloaded from Google Cloud Console
 # --------------------
 
@@ -21,10 +21,20 @@ def spotify_login():
                             scope=scope)
     return spotipy.Spotify(auth_manager=sp_oauth)
 
+
 def youtube_login():
     scopes = ["https://www.googleapis.com/auth/youtube.force-ssl"]
-    flow = InstalledAppFlow.from_client_secrets_file(YOUTUBE_CLIENT_SECRET_FILE, scopes)
+    
+    # Use InstalledAppFlow with your downloaded client_secrets.json file
+    flow = InstalledAppFlow.from_client_secrets_file(
+        "client_secrets.json",  # Make sure this file is in your script's folder
+        scopes=scopes
+    )
+    
+    # Start local server flow on port 8080 — will open your browser for login
     credentials = flow.run_local_server(port=8080)
+    
+    # Return authenticated YouTube client
     return build("youtube", "v3", credentials=credentials)
 
 def get_spotify_tracks(sp, playlist_url):
@@ -68,7 +78,7 @@ def search_youtube_video(youtube, query):
         return items[0]["id"]["videoId"]
     return None
 
-def add_video_to_playlist(youtube, playlist_id, video_id):
+def add_video_to_playlist(youtube, playlist_id, video_id, retries=3):
     request = youtube.playlistItems().insert(
         part="snippet",
         body={
@@ -81,7 +91,20 @@ def add_video_to_playlist(youtube, playlist_id, video_id):
             }
         }
     )
-    request.execute()
+
+    for attempt in range(1, retries + 1):
+        try:
+            request.execute()
+            print(f"Successfully added video: https://youtube.com/watch?v={video_id}")
+            break  # Success, exit loop
+        except HttpError as e:
+            print(f"[Attempt {attempt}] Error adding video {video_id}: {e}")
+            if attempt == retries:
+                print(f"Failed after {retries} attempts, skipping this video.")
+                break
+            time.sleep(2)  # wait before retrying
+    
+    time.sleep(5)  # Always wait 5s before next video to avoid quota issues
 
 def main():
     sp = spotify_login()
@@ -91,7 +114,7 @@ def main():
     tracks = get_spotify_tracks(sp, SPOTIFY_PLAYLIST_URL)
     print(f"Found {len(tracks)} tracks.")
 
-    playlist_name = "Converted from Spotify"
+    playlist_name = "Genau dieser Techno Test1"
     print(f"Creating YouTube playlist: {playlist_name}")
     yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
 
