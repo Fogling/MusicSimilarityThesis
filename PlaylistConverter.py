@@ -8,8 +8,8 @@ import time
 # ---- SET THESE ----
 SPOTIFY_CLIENT_ID = "c8f4b187f2b745f1ba363a67f69b15b3"
 SPOTIFY_CLIENT_SECRET = "8ae23b17695a4455b9ef9e603abfc06d"
-SPOTIFY_REDIRECT_URI = "https://b78a-2003-c4-2747-d59c-8d24-56d-8a2f-eb44.ngrok-free.app"
-SPOTIFY_PLAYLIST_URL = "https://open.spotify.com/playlist/7FjrRssMtynYXoHeVsporB?si=d6fc8e396eac450d"
+SPOTIFY_REDIRECT_URI = "https://1fb7-2003-c4-2747-d5c4-a863-667d-2918-6f7f.ngrok-free.app"
+SPOTIFY_PLAYLIST_URL = "https://open.spotify.com/playlist/7vmmAU6Hc7PCwu9Wkfh92f?si=d4bfba236b52487d"
 YOUTUBE_CLIENT_SECRET_FILE = "client_secrets.json"  # Downloaded from Google Cloud Console
 # --------------------
 
@@ -114,7 +114,7 @@ def main():
     tracks = get_spotify_tracks(sp, SPOTIFY_PLAYLIST_URL)
     print(f"Found {len(tracks)} tracks.")
 
-    playlist_name = "Converted from Spotify"
+    playlist_name = "Zyzz Music"
     print(f"Creating YouTube playlist: {playlist_name}")
     yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
 
