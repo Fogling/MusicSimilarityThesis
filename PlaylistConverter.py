@@ -4,12 +4,13 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 import json
 import time
+import sys
 
 # ---- SET THESE ----
 SPOTIFY_CLIENT_ID = "c8f4b187f2b745f1ba363a67f69b15b3"
 SPOTIFY_CLIENT_SECRET = "8ae23b17695a4455b9ef9e603abfc06d"
-SPOTIFY_REDIRECT_URI = "https://1fb7-2003-c4-2747-d5c4-a863-667d-2918-6f7f.ngrok-free.app"
-SPOTIFY_PLAYLIST_URL = "https://open.spotify.com/playlist/7vmmAU6Hc7PCwu9Wkfh92f?si=d4bfba236b52487d"
+SPOTIFY_REDIRECT_URI = "https://adb34eb28557.ngrok-free.app"
+SPOTIFY_PLAYLIST_URL = "https://open.spotify.com/playlist/7MFwFHiJjC4unTZXQEzavy?si=84a6daccf9594525"
 YOUTUBE_CLIENT_SECRET_FILE = "client_secrets.json"  # Downloaded from Google Cloud Console
 # --------------------
 
@@ -21,20 +22,13 @@ def spotify_login():
                             scope=scope)
     return spotipy.Spotify(auth_manager=sp_oauth)
 
-
 def youtube_login():
     scopes = ["https://www.googleapis.com/auth/youtube.force-ssl"]
-    
-    # Use InstalledAppFlow with your downloaded client_secrets.json file
     flow = InstalledAppFlow.from_client_secrets_file(
-        "client_secrets.json",  # Make sure this file is in your script's folder
+        "client_secrets.json",
         scopes=scopes
     )
-    
-    # Start local server flow on port 8080 — will open your browser for login
     credentials = flow.run_local_server(port=8080)
-    
-    # Return authenticated YouTube client
     return build("youtube", "v3", credentials=credentials)
 
 def get_spotify_tracks(sp, playlist_url):
@@ -64,6 +58,14 @@ def create_youtube_playlist(youtube, title):
     )
     response = request.execute()
     return response["id"]
+
+def get_existing_youtube_playlist_id(youtube, title):
+    request = youtube.playlists().list(part="snippet", mine=True, maxResults=50)
+    response = request.execute()
+    for item in response.get("items", []):
+        if item["snippet"]["title"] == title:
+            return item["id"]
+    return None
 
 def search_youtube_video(youtube, query):
     request = youtube.search().list(
@@ -96,15 +98,15 @@ def add_video_to_playlist(youtube, playlist_id, video_id, retries=3):
         try:
             request.execute()
             print(f"Successfully added video: https://youtube.com/watch?v={video_id}")
-            break  # Success, exit loop
-        except HttpError as e:
+            break
+        except Exception as e:
             print(f"[Attempt {attempt}] Error adding video {video_id}: {e}")
             if attempt == retries:
                 print(f"Failed after {retries} attempts, skipping this video.")
                 break
-            time.sleep(2)  # wait before retrying
-    
-    time.sleep(5)  # Always wait 5s before next video to avoid quota issues
+            time.sleep(2)
+
+    time.sleep(5)
 
 def main():
     sp = spotify_login()
@@ -114,15 +116,30 @@ def main():
     tracks = get_spotify_tracks(sp, SPOTIFY_PLAYLIST_URL)
     print(f"Found {len(tracks)} tracks.")
 
-    playlist_name = "Zyzz Music"
-    print(f"Creating YouTube playlist: {playlist_name}")
-    yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
+    if len(sys.argv) > 1:
+        playlist_name = sys.argv[1]
+        yt_playlist_id = get_existing_youtube_playlist_id(youtube, playlist_name)
+        if yt_playlist_id:
+            print(f"Using existing playlist: {playlist_name}")
+        else:
+            print(f"No existing playlist found with name '{playlist_name}', creating a new one.")
+            yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
+    else:
+        playlist_name = "Zyzz Music"
+        print(f"No playlist name provided. Creating new playlist: {playlist_name}")
+        yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
 
     start_index = int(input(f"Enter the start index (0-{len(tracks)-1:03}) or 0 to start from the beginning: "))
+    max_tracks_per_run = 65
+    processed_count = 0
 
     for idx, query in enumerate(tracks):
         if idx < start_index:
-            continue  # Skip songs before start_index
+            continue
+
+        if processed_count >= max_tracks_per_run:
+            print(f"Reached daily limit of {max_tracks_per_run} tracks, stopping.")
+            break
 
         print(f"[{idx}] Searching: {query}")
         video_id = search_youtube_video(youtube, query)
@@ -132,6 +149,7 @@ def main():
         else:
             print("No match found.")
 
+        processed_count += 1
 
     print("Done!")
 
