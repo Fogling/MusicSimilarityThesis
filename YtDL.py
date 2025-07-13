@@ -5,29 +5,49 @@ import logging
 import re
 import time
 from typing import List, Union
+import unicodedata
 
 class YouTubeMusicDownloader:
     def __init__(self, output_dir):
         self.output_dir = output_dir
         self.logger = self._setup_logger()
-        
-        # Create output directory
         os.makedirs(output_dir, exist_ok=True)
-        
-        # MP3 download options
-        self.ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-            'ignoreerrors': True,
-            'no_warnings': False,
-            'quiet': False,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '320',
-            }],
-        }
 
+    def _sanitize_filename(self, title):
+        # Normalize accents
+        title = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('ascii')
+        # Remove emojis and unwanted symbols
+        title = re.sub(r'[^\w\s-]', '', title)
+        # Collapse whitespace and trim
+        title = re.sub(r'\s+', ' ', title).strip()
+        # Limit length
+        return title[:100]
+
+    def _download_track(self, url: str, sanitized_title: str) -> bool:
+        # Prepare dynamic options with clean title
+        ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': os.path.join(self.output_dir, f"{sanitized_title}.%(ext)s"),
+        'ignoreerrors': True,
+        'quiet': True,  # ✅ suppress all yt_dlp output
+        'no_warnings': True,
+        'progress_hooks': [],  # Remove any hooks
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '320',
+        }],
+    }
+        
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+                return True
+        except Exception as e:
+            self.logger.error(f"Error downloading track '{sanitized_title}': {e}")
+            return False
+    
     def _setup_logger(self):
         """Setup logging configuration"""
         logger = logging.getLogger('YouTubeMusicDownloader')
@@ -39,26 +59,6 @@ class YouTubeMusicDownloader:
         logger.addHandler(handler)
         
         return logger
-
-    def _sanitize_filename(self, filename):
-        """Sanitize filename for safe saving"""
-        # Remove invalid characters
-        filename = re.sub(r'[<>:"/\\|?*]', '', filename)
-        # Limit filename length
-        if len(filename) > 200:
-            filename = filename[:200]
-        return filename
-
-    def _download_track(self, url: str) -> bool:
-        """Download a single track as MP3"""
-        try:
-            with yt_dlp.YoutubeDL(self.ydl_opts) as ydl:
-                ydl.download([url])
-                return True
-                
-        except Exception as e:
-            self.logger.error(f"Error downloading track: {e}")
-            return False
 
     def download_playlist(self, playlist_url: str) -> List[str]:
         """Download all tracks from a playlist as MP3"""
@@ -84,7 +84,8 @@ class YouTubeMusicDownloader:
                     title = video.get('title', 'Unknown Track')
                     self.logger.info(f"Downloading track {i}/{len(videos)}: {title}")
                     
-                    if self._download_track(video_url):
+                    sanitized_title = self._sanitize_filename(title)
+                    if self._download_track(video_url, sanitized_title):
                         downloaded_tracks.append(title)
                     
                     # Small delay to avoid rate limiting
