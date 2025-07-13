@@ -38,7 +38,6 @@ class YouTubeMusicDownloader:
             'preferredquality': '320',
         }],
     }
-        
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
