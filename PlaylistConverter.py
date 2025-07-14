@@ -2,16 +2,14 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-import json
 import time
-import sys
+import argparse
 
 # ---- SET THESE ----
 SPOTIFY_CLIENT_ID = "c8f4b187f2b745f1ba363a67f69b15b3"
 SPOTIFY_CLIENT_SECRET = "8ae23b17695a4455b9ef9e603abfc06d"
-SPOTIFY_REDIRECT_URI = "https://adb34eb28557.ngrok-free.app"
-SPOTIFY_PLAYLIST_URL = "https://open.spotify.com/playlist/7MFwFHiJjC4unTZXQEzavy?si=84a6daccf9594525"
-YOUTUBE_CLIENT_SECRET_FILE = "client_secrets.json"  # Downloaded from Google Cloud Console
+SPOTIFY_REDIRECT_URI = "https://7ff6bf29d089.ngrok-free.app"
+YOUTUBE_CLIENT_SECRET_FILE = "client_secrets.json"
 # --------------------
 
 def spotify_login():
@@ -25,7 +23,7 @@ def spotify_login():
 def youtube_login():
     scopes = ["https://www.googleapis.com/auth/youtube.force-ssl"]
     flow = InstalledAppFlow.from_client_secrets_file(
-        "client_secrets.json",
+        YOUTUBE_CLIENT_SECRET_FILE,
         scopes=scopes
     )
     credentials = flow.run_local_server(port=8080)
@@ -72,13 +70,26 @@ def search_youtube_video(youtube, query):
         part="snippet",
         q=query,
         type="video",
-        maxResults=1
+        maxResults=3
     )
     response = request.execute()
     items = response.get("items", [])
-    if items:
-        return items[0]["id"]["videoId"]
-    return None
+
+    preferred_video_id = None
+    fallback_video_id = None
+
+    for item in items:
+        title = item["snippet"]["title"].lower()
+        video_id = item["id"]["videoId"]
+
+        if "official video" in title:
+            if not fallback_video_id:
+                fallback_video_id = video_id  # save first "official video" match
+        else:
+            preferred_video_id = video_id
+            break  # first good match wins
+
+    return preferred_video_id or fallback_video_id
 
 def add_video_to_playlist(youtube, playlist_id, video_id, retries=3):
     request = youtube.playlistItems().insert(
@@ -93,7 +104,6 @@ def add_video_to_playlist(youtube, playlist_id, video_id, retries=3):
             }
         }
     )
-
     for attempt in range(1, retries + 1):
         try:
             request.execute()
@@ -105,29 +115,27 @@ def add_video_to_playlist(youtube, playlist_id, video_id, retries=3):
                 print(f"Failed after {retries} attempts, skipping this video.")
                 break
             time.sleep(2)
-
     time.sleep(5)
 
 def main():
+    parser = argparse.ArgumentParser(description="Convert a Spotify playlist to a YouTube playlist")
+    parser.add_argument("spotify_url", help="Spotify playlist URL")
+    parser.add_argument("youtube_playlist_name", help="YouTube playlist name")
+    args = parser.parse_args()
+
     sp = spotify_login()
     youtube = youtube_login()
 
     print("Fetching Spotify tracks...")
-    tracks = get_spotify_tracks(sp, SPOTIFY_PLAYLIST_URL)
+    tracks = get_spotify_tracks(sp, args.spotify_url)
     print(f"Found {len(tracks)} tracks.")
 
-    if len(sys.argv) > 1:
-        playlist_name = sys.argv[1]
-        yt_playlist_id = get_existing_youtube_playlist_id(youtube, playlist_name)
-        if yt_playlist_id:
-            print(f"Using existing playlist: {playlist_name}")
-        else:
-            print(f"No existing playlist found with name '{playlist_name}', creating a new one.")
-            yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
+    yt_playlist_id = get_existing_youtube_playlist_id(youtube, args.youtube_playlist_name)
+    if yt_playlist_id:
+        print(f"Using existing playlist: {args.youtube_playlist_name}")
     else:
-        playlist_name = "Zyzz Music"
-        print(f"No playlist name provided. Creating new playlist: {playlist_name}")
-        yt_playlist_id = create_youtube_playlist(youtube, playlist_name)
+        print(f"No existing playlist found with name '{args.youtube_playlist_name}', creating a new one.")
+        yt_playlist_id = create_youtube_playlist(youtube, args.youtube_playlist_name)
 
     start_index = int(input(f"Enter the start index (0-{len(tracks)-1:03}) or 0 to start from the beginning: "))
     max_tracks_per_run = 65
@@ -136,11 +144,9 @@ def main():
     for idx, query in enumerate(tracks):
         if idx < start_index:
             continue
-
         if processed_count >= max_tracks_per_run:
             print(f"Reached daily limit of {max_tracks_per_run} tracks, stopping.")
             break
-
         print(f"[{idx}] Searching: {query}")
         video_id = search_youtube_video(youtube, query)
         if video_id:
@@ -148,7 +154,6 @@ def main():
             add_video_to_playlist(youtube, yt_playlist_id, video_id)
         else:
             print("No match found.")
-
         processed_count += 1
 
     print("Done!")
