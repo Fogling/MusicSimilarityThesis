@@ -3,13 +3,17 @@ import torchaudio
 import torch
 import torchaudio.transforms as T
 
+#using this (simpler) instead of sox for now
+torchaudio.set_audio_backend("soundfile")
+
 # Optional: Define custom start seconds for each subgenre
 start_seconds = {
     "Chill House": 30,
     "Banger House": 30,
     "Party Techno": 0,
-    "Schiebender Techno": 60,
-    "Emotional + melancholic Techno": 0,
+    "Dark Techno": 60,
+    "Emotional Techno": 0,
+    "Zyzz" : 0,
     "Hard Techno": 10,
     "Banger Goa": 15,
     "Chiller vibe Goa": 30,
