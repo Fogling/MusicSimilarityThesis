@@ -5,7 +5,7 @@ import torchaudio
 from torch.utils.data import Dataset
 
 class TripletAudioDataset(Dataset):
-    def __init__(self, root_dir, transform=None, sample_rate=16000, duration=10):
+    def __init__(self, root_dir, transform=None, sample_rate=16000):
         """
         Args:
             root_dir (str): Path to directory containing subgenre folders.
@@ -16,7 +16,6 @@ class TripletAudioDataset(Dataset):
         self.root_dir = root_dir
         self.transform = transform
         self.sample_rate = sample_rate
-        self.chunk_size = sample_rate * duration
 
         self.subgenre_to_files = self._gather_files()
         self.all_files = [(g, f) for g, fs in self.subgenre_to_files.items() for f in fs]
@@ -28,23 +27,17 @@ class TripletAudioDataset(Dataset):
             path = os.path.join(self.root_dir, sub)
             if not os.path.isdir(path):
                 continue
-            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(('.mp3', '.wav'))]
+            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(('.pt'))]
+            print(f"Found subgenre folder: {sub} with {len(files)} .pt files")
             if len(files) >= 2:
                 mapping[sub] = files
         return mapping
 
+
     def _load_clip(self, path):
-        waveform, sr = torchaudio.load(path)
-        if waveform.ndim > 1:
-            waveform = waveform.mean(dim=0)
-        if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-            waveform = resampler(waveform)
-        if waveform.shape[-1] < self.chunk_size:
-            pad = torch.zeros(self.chunk_size - waveform.shape[-1])
-            waveform = torch.cat([waveform, pad])
-        else:
-            waveform = waveform[:self.chunk_size]
+        waveform = torch.load(path)
+        if waveform.ndim == 1:
+            waveform = waveform.unsqueeze(0)  # add channel dim if needed
         if self.transform:
             waveform = self.transform(waveform)
         return waveform

@@ -8,7 +8,7 @@ import argparse
 # ---- SET THESE ----
 SPOTIFY_CLIENT_ID = "c8f4b187f2b745f1ba363a67f69b15b3"
 SPOTIFY_CLIENT_SECRET = "8ae23b17695a4455b9ef9e603abfc06d"
-SPOTIFY_REDIRECT_URI = "https://7ff6bf29d089.ngrok-free.app"
+SPOTIFY_REDIRECT_URI = "https://292d65519207.ngrok-free.app"
 YOUTUBE_CLIENT_SECRET_FILE = "client_secrets.json"
 # --------------------
 
@@ -115,7 +115,7 @@ def add_video_to_playlist(youtube, playlist_id, video_id, retries=3):
                 print(f"Failed after {retries} attempts, skipping this video.")
                 break
             time.sleep(2)
-    time.sleep(5)
+    time.sleep(2)
 
 def main():
     parser = argparse.ArgumentParser(description="Convert a Spotify playlist to a YouTube playlist")

@@ -2,30 +2,36 @@ import os
 import torchaudio
 import torch
 import torchaudio.transforms as T
-
-#using this (simpler) instead of sox for now
-torchaudio.set_audio_backend("soundfile")
+import re
+from tqdm import tqdm
 
 # Optional: Define custom start seconds for each subgenre
 start_seconds = {
     "Chill House": 30,
     "Banger House": 30,
     "Party Techno": 0,
-    "Dark Techno": 60,
-    "Emotional Techno": 0,
-    "Zyzz" : 0,
+    "Schiebender Techno": 60,
+    "Emotional + melancholic Techno": 0,
     "Hard Techno": 10,
     "Banger Goa": 15,
     "Chiller vibe Goa": 30,
     "Arsch Goa": 0,
-    # Add more entries as needed
 }
+
+def sanitize_filename(filename):
+    sanitized = re.sub(r'[\\/:*?"<>|]', '', filename)  # remove illegal characters
+    sanitized = re.sub(r'\s+', '_', sanitized.strip())   # replace whitespace with _
+    return sanitized[:100]  # limit length
 
 def preprocess_music_folder(root_dir, target_sr=16000, window_duration=75, chunk_count=3, output_dir="preprocessed_chunks"):
     os.makedirs(output_dir, exist_ok=True)
     chunk_duration = window_duration // chunk_count
     chunk_samples = chunk_duration * target_sr
     total_samples = window_duration * target_sr
+
+    total_files = 0
+    processed_files = 0
+    failed_files = []
 
     for genre_folder in os.listdir(root_dir):
         genre_path = os.path.join(root_dir, genre_folder)
@@ -41,10 +47,9 @@ def preprocess_music_folder(root_dir, target_sr=16000, window_duration=75, chunk
             label_dir = os.path.join(output_dir, label)
             os.makedirs(label_dir, exist_ok=True)
 
-            for filename in os.listdir(subgenre_path):
-                if not filename.lower().endswith(".mp3"):
-                    continue
-
+            files = [f for f in os.listdir(subgenre_path) if f.lower().endswith((".mp3", ".wav"))]
+            for filename in tqdm(files, desc=f"Processing {label}"):
+                total_files += 1
                 file_path = os.path.join(subgenre_path, filename)
                 try:
                     waveform, sr = torchaudio.load(file_path)
@@ -71,13 +76,21 @@ def preprocess_music_folder(root_dir, target_sr=16000, window_duration=75, chunk
                     window = waveform[start_sample: start_sample + total_samples]
                     chunk_len = total_samples // chunk_count
 
+                    base_name = sanitize_filename(os.path.splitext(filename)[0])
                     for i in range(chunk_count):
                         chunk = window[i * chunk_len : (i + 1) * chunk_len]
-                        out_path = os.path.join(label_dir, f"{os.path.splitext(filename)[0]}_chunk{i+1}.pt")
+                        out_path = os.path.join(label_dir, f"{base_name}_chunk{i+1}.pt")
                         torch.save(chunk, out_path)
 
+                    processed_files += 1
                 except Exception as e:
-                    print(f"Failed to process {file_path}: {e}")
+                    failed_files.append((file_path, str(e)))
+
+    print(f"\nProcessed {processed_files} / {total_files} files successfully.")
+    if failed_files:
+        print("\nFailed files:")
+        for path, err in failed_files:
+            print(f"- {path}: {err}")
 
 if __name__ == "__main__":
     preprocess_music_folder("MP3")

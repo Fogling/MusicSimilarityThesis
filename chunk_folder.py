@@ -16,7 +16,7 @@ start_seconds = {
     "Hard Techno": 10,
     "Banger Goa": 15,
     "Chiller vibe Goa": 30,
-    "Arsch Goa": 0,
+    "Zyzz Music": 0,
 }
 
 def chunk_folder(subgenre_path, target_sr=16000, window_duration=75, chunk_count=3, output_dir="preprocessed_chunks"):
