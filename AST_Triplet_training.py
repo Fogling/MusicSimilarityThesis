@@ -12,7 +12,7 @@ torch.serialization.add_safe_globals({"BatchFeature": BatchFeature})
 PRETRAINED_MODEL = "MIT/ast-finetuned-audioset-10-10-0.4593"
 CHUNKS_DIR = "preprocessed_features"
 MODEL_OUTPUT_DIR = "ast_triplet_output"
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 LEARNING_RATE = 1e-4
 EPOCHS = 10
 MARGIN = 0.3
@@ -132,7 +132,7 @@ def main():
         num_train_epochs=EPOCHS,
         weight_decay=0.01,
         logging_dir=os.path.join(MODEL_OUTPUT_DIR, "logs"),
-        dataloader_num_workers=3,
+        dataloader_num_workers=2,
         logging_steps=10,
         report_to="none"
     )
