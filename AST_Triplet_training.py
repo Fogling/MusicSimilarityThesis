@@ -2,174 +2,153 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from transformers import ASTFeatureExtractor, ASTModel
-from datasets.TripletAudioDataset import TripletAudioDataset
-from transforms import RandomAudioAugmentation
-from tqdm import tqdm
-import random
-import shutil
+from datasets import Dataset
+from transformers import ASTFeatureExtractor, ASTModel, TrainingArguments, Trainer
+from transformers.feature_extraction_utils import BatchFeature
+import torch.serialization
+torch.serialization.add_safe_globals({"BatchFeature": BatchFeature})
 
 # ========== CONFIG ==========
-BATCH_SIZE = 8
-EPOCHS = 30
-LOG_EVERY = 2
-LR = 1e-4
-MARGIN = 0.3
-WARMUP_EPOCHS = 5
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 PRETRAINED_MODEL = "MIT/ast-finetuned-audioset-10-10-0.4593"
-SUBGENRES = ["Chill House", "Banger House", "Emotional Techno", "Dark Techno", "Zyzz Music"]
-CHUNKS_DIR = "preprocessed_chunks"
-TRAIN_DIR = "preprocessed_chunks_train"
-TEST_DIR = "preprocessed_chunks_test"
-TEST_LOG = "test_set_log.txt"
-CHUNKS_PER_TRACK = 3
+CHUNKS_DIR = "preprocessed_features"
+MODEL_OUTPUT_DIR = "ast_triplet_output"
+BATCH_SIZE = 4
+LEARNING_RATE = 1e-4
+EPOCHS = 10
+MARGIN = 0.3
 
-# ========== MODEL ==========
-class ASTWithProjection(nn.Module):
-    def __init__(self, projection_dim=128):
+# ========== DATA LOADING AND SANITIZATION ==========
+def unwrap_and_squeeze(d):
+    cleaned = {}
+    for k, v in d.items():
+        if isinstance(v, list) and isinstance(v[0], torch.Tensor):
+            v = v[0]
+        elif isinstance(v, list):
+            v = torch.tensor(v)
+
+        if isinstance(v, torch.Tensor) and v.ndim == 3 and v.shape[0] == 1:
+            v = v.squeeze(0)
+
+        cleaned[k] = v
+    return cleaned
+
+def load_triplet_dataset(root_dir):
+    anchors, positives, negatives = [], [], []
+    for subdir in sorted(os.listdir(root_dir)):
+        sub_path = os.path.join(root_dir, subdir)
+        if not os.path.isdir(sub_path):
+            continue
+        files = sorted([f for f in os.listdir(sub_path) if f.endswith(".pt")])
+        triplets = [files[i:i+3] for i in range(0, len(files), 3)]
+        for triplet in triplets:
+            if len(triplet) < 3:
+                continue
+            a, p, n = triplet
+            a_dict = torch.load(os.path.join(sub_path, a), weights_only=False)
+            p_dict = torch.load(os.path.join(sub_path, p), weights_only=False)
+            n_dict = torch.load(os.path.join(sub_path, n), weights_only=False)
+
+            anchors.append(unwrap_and_squeeze(a_dict))
+            positives.append(unwrap_and_squeeze(p_dict))
+            negatives.append(unwrap_and_squeeze(n_dict))
+
+    return Dataset.from_dict({
+        "anchor_input": anchors,
+        "positive_input": positives,
+        "negative_input": negatives
+    })
+
+# ========== MODEL WITH TRIPLET LOSS ==========
+class ASTTripletWrapper(nn.Module):
+    def __init__(self, base_model):
         super().__init__()
-        self.ast = ASTModel.from_pretrained(PRETRAINED_MODEL)
-        self.projection = nn.Sequential(
+        self.ast = base_model
+        self.projector = nn.Sequential(
             nn.Linear(self.ast.config.hidden_size, 512),
             nn.ReLU(),
-            nn.Linear(512, projection_dim)
+            nn.Linear(512, 128)
         )
 
-    def forward(self, inputs):
+    def embed(self, inputs):
         outputs = self.ast(**inputs)
         pooled = outputs.last_hidden_state.mean(dim=1)
-        return F.normalize(self.projection(pooled), dim=1)
+        return F.normalize(self.projector(pooled), dim=1)
 
-# ========== UTILS ==========
-def prepare_balanced_data():
-    os.makedirs(TRAIN_DIR, exist_ok=True)
-    os.makedirs(TEST_DIR, exist_ok=True)
-    with open(TEST_LOG, "w") as log:
-        for sub in SUBGENRES:
-            full_path = os.path.join(CHUNKS_DIR, sub)
-            files = [f for f in os.listdir(full_path) if f.endswith("_chunk1.pt")]
-            base_names = [f.replace("_chunk1.pt", "") for f in files]
+    def forward(self, anchor_input, positive_input, negative_input):
+        emb_a = self.embed(anchor_input)
+        emb_p = self.embed(positive_input)
+        emb_n = self.embed(negative_input)
 
-            # Filter only tracks that have all chunks
-            valid_tracks = []
-            for name in base_names:
-                all_exist = all(os.path.exists(os.path.join(full_path, f"{name}_chunk{i+1}.pt")) for i in range(CHUNKS_PER_TRACK))
-                if all_exist:
-                    valid_tracks.append(name)
+        d_ap = 1 - F.cosine_similarity(emb_a, emb_p)
+        d_an = 1 - F.cosine_similarity(emb_a, emb_n)
+        loss = torch.clamp(d_ap - d_an + MARGIN, min=0.0).mean()
+        return {"loss": loss}
 
-            print(f"{sub}: {len(valid_tracks)} valid tracks with {CHUNKS_PER_TRACK} chunks")
+# ========== DATA COLLATOR ==========
+def collate_triplets(batch):
+    def stack_inputs(key):
+        keys = batch[0][key].keys()
+        stacked = {}
+        for k in keys:
+            tensors = []
+            for item in batch:
+                value = item[key][k]
+                # If it's a list: convert to tensor
+                if isinstance(value, list):
+                    value = torch.tensor(value)
+                # If it's still not tensor: raise clear error
+                if not isinstance(value, torch.Tensor):
+                    raise TypeError(f"Expected tensor but got {type(value)} for key {key}.{k}")
+                # Squeeze unnecessary dimensions (like [1, 1024, 128])
+                if value.ndim == 3 and value.shape[0] == 1:
+                    value = value.squeeze(0)
+                tensors.append(value)
+            stacked[k] = torch.stack(tensors)
+        return stacked
 
-            if len(valid_tracks) < 50:
-                print(f"WARNING: {sub} only has {len(valid_tracks)} usable tracks (need 50)")
-
-            selected = valid_tracks[:50]
-            test_size = random.randint(5, 10)
-            test_tracks = random.sample(selected, test_size)
-            train_tracks = [t for t in selected if t not in test_tracks]
-
-            os.makedirs(os.path.join(TRAIN_DIR, sub), exist_ok=True)
-            os.makedirs(os.path.join(TEST_DIR, sub), exist_ok=True)
-
-            for track in train_tracks:
-                for i in range(CHUNKS_PER_TRACK):
-                    fname = f"{track}_chunk{i+1}.pt"
-                    shutil.copy(os.path.join(full_path, fname), os.path.join(TRAIN_DIR, sub, fname))
-
-            for track in test_tracks:
-                for i in range(CHUNKS_PER_TRACK):
-                    fname = f"{track}_chunk{i+1}.pt"
-                    shutil.copy(os.path.join(full_path, fname), os.path.join(TEST_DIR, sub, fname))
-
-            log.write(f"{sub} test tracks (total {len(test_tracks)}):\n")
-            for t in test_tracks:
-                log.write(f"  - {t}\n")
-            log.write("\n")
-
-# ========== LOSS ==========
-def triplet_loss(a, p, n, margin):
-    d_ap = 1 - F.cosine_similarity(a, p)
-    d_an = 1 - F.cosine_similarity(a, n)
-    loss = torch.clamp(d_ap - d_an + margin, min=0.0)
-    return loss.mean()
+    return {
+        "anchor_input": stack_inputs("anchor_input"),
+        "positive_input": stack_inputs("positive_input"),
+        "negative_input": stack_inputs("negative_input")
+    }
 
 # ========== MAIN ==========
 def main():
-    print(f"Using device: {DEVICE}")
+    print("Loading triplet dataset...")
+    dataset = load_triplet_dataset(CHUNKS_DIR)
+    dataset = dataset.train_test_split(test_size=0.1)
 
-    # Optional: Skip re-prepping if folders already exist
-    if not os.path.exists(TRAIN_DIR) or not os.path.exists(TEST_DIR):
-        print("Preparing train/test data...")
-        prepare_balanced_data()
-    else:
-        print("Skipping dataset prep — folders already exist.")
+    print("Loading AST model and feature extractor...")
+    feature_extractor = ASTFeatureExtractor.from_pretrained(PRETRAINED_MODEL)
+    model = ASTModel.from_pretrained(PRETRAINED_MODEL)
+    wrapped_model = ASTTripletWrapper(model).to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
-    model = ASTWithProjection().to(DEVICE)
-    extractor = ASTFeatureExtractor.from_pretrained(PRETRAINED_MODEL)
+    training_args = TrainingArguments(
+        output_dir=MODEL_OUTPUT_DIR,
+        eval_strategy="no",
+        save_strategy="epoch",
+        learning_rate=LEARNING_RATE,
+        per_device_train_batch_size=BATCH_SIZE,
+        num_train_epochs=EPOCHS,
+        weight_decay=0.01,
+        logging_dir=os.path.join(MODEL_OUTPUT_DIR, "logs"),
+        dataloader_num_workers=3,
+        logging_steps=10,
+        report_to="none"
+    )
 
-    for param in model.ast.parameters():
-        param.requires_grad = False
+    trainer = Trainer(
+        model=wrapped_model,
+        args=training_args,
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["test"],
+        data_collator=collate_triplets
+    )
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    augmentation = RandomAudioAugmentation()
-    dataset = TripletAudioDataset(root_dir=TRAIN_DIR, transform=augmentation)
-    print(f"Total training triplets available: {len(dataset)}")
-    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-    if len(dataset) == 0:
-        raise RuntimeError("Training dataset is empty. Check preprocessing and file structure.")
-
-    model.train()
-    for epoch in range(EPOCHS):
-        if epoch == WARMUP_EPOCHS:
-            print("Unfreezing AST model layers...")
-            for param in model.ast.parameters():
-                param.requires_grad = True
-
-        total_loss = 0.0
-        for anchor, positive, negative in tqdm(loader, desc=f"Epoch {epoch+1}/{EPOCHS}"):
-            
-            inputs_a = extractor(
-                [x.cpu().numpy().squeeze() for x in anchor],
-                sampling_rate=extractor.sampling_rate,
-                return_tensors="pt",
-                padding=True
-            )
-            inputs_p = extractor(
-                [x.cpu().numpy().squeeze() for x in positive],
-                sampling_rate=extractor.sampling_rate,
-                return_tensors="pt",
-                padding=True
-            )
-            inputs_n = extractor(
-                [x.cpu().numpy().squeeze() for x in negative],
-                sampling_rate=extractor.sampling_rate,
-                return_tensors="pt",
-                padding=True
-            )
-
-            inputs_a = {k: v.to(DEVICE) for k, v in inputs_a.items()}
-            inputs_p = {k: v.to(DEVICE) for k, v in inputs_p.items()}
-            inputs_n = {k: v.to(DEVICE) for k, v in inputs_n.items()}
-
-            emb_a = model(inputs_a)
-            emb_p = model(inputs_p)
-            emb_n = model(inputs_n)
-
-            loss = triplet_loss(emb_a, emb_p, emb_n, MARGIN)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-
-        if (epoch + 1) % LOG_EVERY == 0:
-            avg_loss = total_loss / len(loader)
-            print(f"Epoch {epoch+1} | Avg Triplet Loss: {avg_loss:.4f}")
-
-    torch.save(model.state_dict(), "triplet_AST_finetuned.pth")
-    print("Model saved as triplet_AST_finetuned.pth")
+    print("Starting triplet training...")
+    trainer.train()
+    trainer.save_model()
+    print("Triplet model saved.")
 
 if __name__ == "__main__":
     main()

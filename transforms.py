@@ -4,7 +4,7 @@ import torch
 import random
 
 class RandomAudioAugmentation:
-    def __init__(self, sample_rate=16000, pitch_range=(-2, 2), noise_prob=0.3):
+    def __init__(self, sample_rate=16000, pitch_range=(-2, 2), noise_prob=0):
         self.sample_rate = sample_rate
         self.pitch_range = pitch_range
         self.noise_prob = noise_prob

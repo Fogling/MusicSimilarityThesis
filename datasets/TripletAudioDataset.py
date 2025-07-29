@@ -1,22 +1,15 @@
 import os
 import random
 import torch
-import torchaudio
 from torch.utils.data import Dataset
 
 class TripletAudioDataset(Dataset):
-    def __init__(self, root_dir, transform=None, sample_rate=16000):
+    def __init__(self, root_dir):
         """
         Args:
-            root_dir (str): Path to directory containing subgenre folders.
-            transform: Optional waveform transform (e.g., pitch shift, reverb)
-            sample_rate (int): Target sample rate
-            duration (int): Clip length in seconds
+            root_dir (str): Path to directory containing subgenre folders with preprocessed AST inputs.
         """
         self.root_dir = root_dir
-        self.transform = transform
-        self.sample_rate = sample_rate
-
         self.subgenre_to_files = self._gather_files()
         self.all_files = [(g, f) for g, fs in self.subgenre_to_files.items() for f in fs]
         self.subgenres = list(self.subgenre_to_files.keys())
@@ -27,20 +20,14 @@ class TripletAudioDataset(Dataset):
             path = os.path.join(self.root_dir, sub)
             if not os.path.isdir(path):
                 continue
-            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(('.pt'))]
-            print(f"Found subgenre folder: {sub} with {len(files)} .pt files")
+            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.pt')]
             if len(files) >= 2:
                 mapping[sub] = files
         return mapping
 
-
-    def _load_clip(self, path):
-        waveform = torch.load(path)
-        if waveform.ndim == 1:
-            waveform = waveform.unsqueeze(0)  # add channel dim if needed
-        if self.transform:
-            waveform = self.transform(waveform)
-        return waveform
+    def _load_features(self, path):
+        features = torch.load(path)
+        return dict(features)  # <-- this line fixes it
 
     def __getitem__(self, index):
         anchor_genre, anchor_path = self.all_files[index]
@@ -52,10 +39,14 @@ class TripletAudioDataset(Dataset):
         negative_genre = random.choice(other_genres)
         negative_path = random.choice(self.subgenre_to_files[negative_genre])
 
+        sample = self._load_features(anchor_path)
+        print("Sample type:", type(sample))  # should be <class 'dict'>
+        print("Sample keys:", sample.keys()) # should include 'input_values', etc.
+
         return (
-            self._load_clip(anchor_path),
-            self._load_clip(positive_path),
-            self._load_clip(negative_path),
+            self._load_features(anchor_path),
+            self._load_features(positive_path),
+            self._load_features(negative_path),
         )
 
     def __len__(self):
