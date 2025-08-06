@@ -27,6 +27,7 @@ class YouTubeMusicDownloader:
         # Prepare dynamic options with clean title
         ydl_opts = {
         'format': 'bestaudio/best',
+        'quality': 0,
         'outtmpl': os.path.join(self.output_dir, f"{sanitized_title}.%(ext)s"),
         'ignoreerrors': True,
         'quiet': True,  # ✅ suppress all yt_dlp output
@@ -34,8 +35,7 @@ class YouTubeMusicDownloader:
         'progress_hooks': [],  # Remove any hooks
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '320',
+            'preferredcodec': 'wav',
         }],
     }
 
