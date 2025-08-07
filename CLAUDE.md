@@ -25,9 +25,10 @@ This is a **music genre classification and similarity learning** research projec
 
 1. **Audio Preprocessing Pipeline** (`Preprocess_AST_features.py`):
    - Loads audio files from `WAV/` directory organized by genre/subgenre
-   - Chunks audio into 10-second segments (up to 9 chunks per track)
+   - Chunks audio into 10-second segments (3 chunks per track using random sampling)
    - Extracts AST features using `MIT/ast-finetuned-audioset-10-10-0.4593` model
-   - Computes dataset statistics for normalization
+   - Uses memory-efficient online statistics computation
+   - Supports multiple chunk sampling strategies: random (default), sequential, spaced
    - Saves preprocessed features to `preprocessed_features/`
 
 2. **Triplet Loss Training** (`AST_Triplet_training.py`):
@@ -61,7 +62,12 @@ This is a **music genre classification and similarity learning** research projec
 
 **Preprocess audio data**:
 ```bash
+# Uses optimal defaults: 3 random chunks per song
 python Preprocess_AST_features.py
+
+# Or with custom chunk strategy
+python Preprocess_AST_features.py --chunk-strategy sequential
+python Preprocess_AST_features.py --chunk-strategy spaced
 ```
 
 **Train triplet model**:
@@ -91,7 +97,8 @@ python extract_test_embeddings.py
 - **Learning Rate**: 1e-4
 - **Epochs**: 30
 - **Triplet Margin**: 0.3
-- **Max Chunks per Song**: 9
+- **Max Chunks per Song**: 3 (optimized to avoid pseudo-duplicates)
+- **Chunk Sampling**: Random sampling by default for maximum diversity
 
 ## Model Architecture Details
 
