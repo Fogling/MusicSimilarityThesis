@@ -41,6 +41,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress verbose logging from transformers and other libraries
+logging.getLogger("transformers").setLevel(logging.WARNING)
+logging.getLogger("torch").setLevel(logging.WARNING)
+logging.getLogger("safetensors").setLevel(logging.WARNING)
+
 
 class TripletValidationError(Exception):
     """Raised when triplet data is invalid."""
@@ -52,20 +57,50 @@ class ModelLoadError(Exception):
     pass
 
 
-class TripletAccuracyCallback(TrainerCallback):
-    """Custom callback to log training accuracy for triplet loss."""
+class CleanLoggingCallback(TrainerCallback):
+    """Custom callback for clean, readable logging without redundant information."""
+    
+    def __init__(self):
+        self.last_logged_step = -1
+        self.last_logged_epoch = -1
     
     def on_log(self, args, state, control, logs=None, **kwargs):
-        """Called whenever logging occurs."""
-        if logs is not None:
-            # Add train_accuracy to logs if eval_accuracy is present but train_accuracy isn't
-            if "eval_accuracy" in logs and "train_accuracy" not in logs:
-                # For triplet loss, we can estimate training accuracy from the loss
-                # This is an approximation since we don't run inference on training data
-                train_loss = logs.get("train_loss", 0.0)
-                # Simple heuristic: lower loss generally means better accuracy
-                estimated_train_accuracy = max(0.0, min(1.0, 1.0 - train_loss))
-                logs["train_accuracy"] = estimated_train_accuracy
+        """Called whenever logging occurs - filters and formats logs cleanly."""
+        if logs is None:
+            return
+            
+        # Remove unwanted fields completely
+        unwanted_fields = [
+            'grad_norm', 'eval_runtime', 'eval_samples_per_second', 
+            'eval_steps_per_second', 'train_runtime', 'train_samples_per_second',
+            'train_steps_per_second', 'total_flos', 'train_steps_per_second'
+        ]
+        
+        for field in unwanted_fields:
+            logs.pop(field, None)
+        
+        # No fake train_accuracy calculation - only real eval_accuracy matters
+        
+        # Only log meaningful progress updates (avoid duplicates)
+        current_step = logs.get('step', 0)
+        current_epoch = logs.get('epoch', 0)
+        
+        if 'train_loss' in logs and 'eval_loss' not in logs:
+            # Training step - only log every N steps to reduce noise
+            if current_step != self.last_logged_step and current_step % 50 == 0:
+                logger.info(f"Training - Step {current_step}: "
+                           f"loss={logs['train_loss']:.4f}, "
+                           f"lr={logs.get('learning_rate', 0):.2e}")
+                self.last_logged_step = current_step
+                
+        elif 'eval_loss' in logs:
+            # Evaluation step - always log these as they're less frequent
+            if current_epoch != self.last_logged_epoch:
+                logger.info(f"Evaluation - Epoch {current_epoch}: "
+                           f"train_loss={logs.get('train_loss', 0):.4f}, "
+                           f"eval_loss={logs['eval_loss']:.4f}, "
+                           f"eval_accuracy={logs.get('eval_accuracy', 0):.3f}")
+                self.last_logged_epoch = current_epoch
 
 # ========== UTILITY FUNCTIONS ==========
 
@@ -511,41 +546,110 @@ def load_split_data(config: ExperimentConfig) -> Tuple[List, List]:
 
 
 def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
-    """Generate triplet splits from preprocessed features directory."""
+    """Generate proper triplet splits ensuring positive samples are from different tracks."""
     chunks_dir = Path(config.data.chunks_dir)
     test_ratio = config.data.test_split_ratio
     
     if not chunks_dir.exists():
         raise FileNotFoundError(f"Chunks directory not found: {chunks_dir}")
     
-    # Get all triplet file paths by subgenre
-    all_triplets = []
-    subgenre_triplets = defaultdict(list)
+    logger.info("Generating triplets with proper cross-track sampling...")
+    
+    # Organize files by subgenre and track
+    subgenre_tracks = defaultdict(dict)  # {subgenre: {track_name: [chunk_files]}}
     
     for subdir in sorted(chunks_dir.iterdir()):
         if not subdir.is_dir():
             continue
-        
+            
         subgenre = subdir.name
-        files = sorted([f for f in subdir.iterdir() if f.suffix == '.pt'])
+        files = [f for f in subdir.iterdir() if f.suffix == '.pt']
         
-        if len(files) < 3:
-            logger.warning(f"Subgenre {subgenre} has only {len(files)} files, skipping")
+        # Group files by track name (remove _chunkX.pt suffix)
+        tracks = defaultdict(list)
+        for file in files:
+            # Extract track name by removing _chunkN.pt
+            track_name = file.stem.rsplit('_chunk', 1)[0]
+            tracks[track_name].append(str(file))
+        
+        # Only keep tracks with at least 2 chunks
+        valid_tracks = {name: chunks for name, chunks in tracks.items() if len(chunks) >= 2}
+        
+        if len(valid_tracks) < 2:
+            logger.warning(f"Subgenre {subgenre} has only {len(valid_tracks)} tracks with >=2 chunks, skipping")
+            continue
+            
+        subgenre_tracks[subgenre] = valid_tracks
+        total_chunks = sum(len(chunks) for chunks in valid_tracks.values())
+        logger.info(f"Subgenre {subgenre}: {len(valid_tracks)} tracks, {total_chunks} chunks total")
+    
+    # Generate triplets with proper cross-genre negatives
+    all_triplets = []
+    subgenre_triplets = defaultdict(list)
+    subgenre_list = list(subgenre_tracks.keys())
+    
+    if len(subgenre_list) < 2:
+        raise ValueError("Need at least 2 subgenres to generate meaningful triplets")
+    
+    for subgenre in subgenre_list:
+        tracks = subgenre_tracks[subgenre]
+        track_names = list(tracks.keys())
+        triplets = []
+        
+        if len(track_names) < 2:
+            logger.warning(f"Subgenre {subgenre} has only {len(track_names)} tracks, skipping")
             continue
         
-        # Group files into triplets
-        for i in range(0, len(files) - 2, 3):
-            if i + 2 < len(files):
-                triplet = (str(files[i]), str(files[i+1]), str(files[i+2]), subgenre)
-                all_triplets.append(triplet)
-                subgenre_triplets[subgenre].append(triplet)
+        # Negative candidates: all tracks from DIFFERENT subgenres (computed once)
+        other_subgenres = [s for s in subgenre_list if s != subgenre]
+        negative_chunks_pool = []
+        for other_subgenre in other_subgenres:
+            for other_track, other_chunks in subgenre_tracks[other_subgenre].items():
+                negative_chunks_pool.extend(other_chunks)
+        
+        if not negative_chunks_pool:
+            logger.warning(f"No negative samples available for subgenre {subgenre}")
+            continue
+        
+        # True balanced sampling: use all tracks and chunks equally
+        for anchor_track in track_names:
+            anchor_chunks = tracks[anchor_track]
+            
+            # Positive candidates: different tracks in SAME subgenre
+            positive_tracks = [t for t in track_names if t != anchor_track]
+            
+            # Use ALL chunks as anchors (not just first 2)
+            for anchor_chunk in anchor_chunks:
+                
+                # Balanced positive sampling (no alphabetical bias)
+                # Sample a reasonable subset of positive tracks to avoid explosion
+                max_positives = min(len(positive_tracks), 8)  # Use up to 8 positive tracks
+                positive_sample = random.sample(positive_tracks, max_positives)
+                
+                for positive_track in positive_sample:
+                    positive_chunks = tracks[positive_track]
+                    
+                    # Generate multiple triplets per positive track for better coverage
+                    triplets_per_positive = min(2, len(positive_chunks))  # Use up to 2 chunks per positive track
+                    
+                    for _ in range(triplets_per_positive):
+                        positive_chunk = random.choice(positive_chunks)
+                        negative_chunk = random.choice(negative_chunks_pool)
+                        
+                        triplet = (anchor_chunk, positive_chunk, negative_chunk, subgenre)
+                        triplets.append(triplet)
+        
+        random.shuffle(triplets)
+        all_triplets.extend(triplets)
+        subgenre_triplets[subgenre] = triplets
     
-    # Stratified split by subgenre
+    # Stratified split by subgenre  
     train_triplets, test_triplets = [], []
     
     for subgenre, triplets in subgenre_triplets.items():
-        random.shuffle(triplets)  # Random seed was set earlier
-        
+        if not triplets:
+            continue
+            
         n_test = max(1, int(len(triplets) * test_ratio))
         test_triplets.extend(triplets[:n_test])
         train_triplets.extend(triplets[n_test:])
@@ -553,6 +657,8 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
         logger.info(f"Subgenre {subgenre}: {len(triplets) - n_test} train, {n_test} test triplets")
     
     logger.info(f"Total: {len(train_triplets)} train, {len(test_triplets)} test triplets")
+    logger.info("✓ Balanced triplet sampling: all tracks and chunks used equally, no alphabetical bias, proper cross-genre negatives")
+    
     return train_triplets, test_triplets
 
 
@@ -633,7 +739,7 @@ def main():
         
         model = ImprovedASTTripletWrapper(config).to(device)
         
-        # Setup training arguments
+        # Setup training arguments with clean logging
         training_args_dict = {
             "output_dir": config.paths.model_output_dir,
             "eval_strategy": config.training.eval_strategy,
@@ -647,7 +753,10 @@ def main():
             "logging_steps": config.training.logging_steps,
             "dataloader_num_workers": config.training.num_workers,
             "dataloader_pin_memory": config.training.pin_memory,
-            "report_to": "none",  # Disable wandb/tensorboard for now
+            "report_to": "none",  # Disable wandb/tensorboard
+            "logging_first_step": False,  # Don't log first step
+            "disable_tqdm": True,  # Disable tqdm progress bars to reduce noise
+            "log_level": "warning",  # Reduce HF Trainer's internal logging
             "seed": config.training.seed,
             "data_seed": config.training.seed,
         }
@@ -668,7 +777,7 @@ def main():
             eval_dataset=test_dataset,
             data_collator=safe_collate_fn,
             compute_metrics=compute_metrics,
-            callbacks=[TripletAccuracyCallback()],
+            callbacks=[CleanLoggingCallback()],
         )
         
         # Start training

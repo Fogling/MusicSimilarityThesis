@@ -59,8 +59,8 @@ class YouTubeMusicDownloader:
         
         return logger
 
-    def download_playlist(self, playlist_url: str) -> List[str]:
-        """Download all tracks from a playlist as MP3"""
+    def download_playlist(self, playlist_url: str, start_index: int = 1) -> List[str]:
+        """Download tracks from a playlist starting from a specific index"""
         downloaded_tracks = []
         
         try:
@@ -75,13 +75,23 @@ class YouTubeMusicDownloader:
                 videos = playlist_info['entries']
                 playlist_title = playlist_info.get('title', 'Unknown Playlist')
                 
-                self.logger.info(f"Found {len(videos)} tracks in playlist: {playlist_title}")
+                # Validate start_index
+                if start_index < 1 or start_index > len(videos):
+                    self.logger.error(f"Start index {start_index} is out of range (1-{len(videos)})")
+                    return downloaded_tracks
                 
-                # Download each track
-                for i, video in enumerate(videos, 1):
+                # Filter videos based on start_index (convert to 0-based)
+                videos_to_download = videos[start_index - 1:]
+                
+                self.logger.info(f"Found {len(videos)} tracks in playlist: {playlist_title}")
+                self.logger.info(f"Starting download from index {start_index} ({len(videos_to_download)} tracks to download)")
+                
+                # Download each track starting from the specified index
+                for i, video in enumerate(videos_to_download):
+                    actual_index = start_index + i  # Calculate actual playlist position
                     video_url = f"https://www.youtube.com/watch?v={video['id']}"
                     title = video.get('title', 'Unknown Track')
-                    self.logger.info(f"Downloading track {i}/{len(videos)}: {title}")
+                    self.logger.info(f"Downloading track {actual_index}/{len(videos)}: {title}")
                     
                     sanitized_title = self._sanitize_filename(title)
                     if self._download_track(video_url, sanitized_title):
@@ -117,15 +127,17 @@ class YouTubeMusicDownloader:
             self.logger.error(f"Error downloading video: {e}")
             return False
 
-    def download(self, url: str) -> Union[List[str], bool]:
+    def download(self, url: str, start_index: int = 1) -> Union[List[str], bool]:
         """Detect URL type and download accordingly"""
         try:
             # Check if it's a playlist or a single video
             if 'playlist' in url or 'list=' in url:
                 self.logger.info("Detected playlist URL")
-                return self.download_playlist(url)
+                return self.download_playlist(url, start_index)
             else:
                 self.logger.info("Detected single video URL")
+                if start_index > 1:
+                    self.logger.warning("Start index ignored for single video downloads")
                 return self.download_single_video(url)
                 
         except Exception as e:
@@ -139,13 +151,20 @@ def main():
     parser.add_argument('url', help='YouTube video or playlist URL')
     parser.add_argument('--output', '-o', default='music_downloads', 
                         help='Output directory for downloaded MP3s (default: music_downloads)')
+    parser.add_argument('--start-index', '-s', type=int, default=1,
+                        help='Start downloading from this playlist index (1-based, default: 1)')
     
     # Parse arguments
     args = parser.parse_args()
     
+    # Validate start index
+    if args.start_index < 1:
+        print("Error: Start index must be 1 or greater")
+        return
+    
     # Create and use downloader
     downloader = YouTubeMusicDownloader(output_dir=args.output)
-    downloader.download(args.url)
+    downloader.download(args.url, start_index=args.start_index)
     
     print(f"\nDownload completed! Your music is in the '{args.output}' folder.")
 
