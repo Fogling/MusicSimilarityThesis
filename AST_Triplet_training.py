@@ -606,10 +606,10 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
     
     # Step 3: Generate triplets separately for train and test sets
     logger.info("Generating training triplets from train tracks...")
-    train_triplets = _generate_triplets_from_tracks(train_tracks, "train")
+    train_triplets = _generate_triplets_from_tracks(train_tracks, "train", config)
     
     logger.info("Generating test triplets from test tracks...")
-    test_triplets = _generate_triplets_from_tracks(test_tracks, "test")
+    test_triplets = _generate_triplets_from_tracks(test_tracks, "test", config)
     
     # Verify no track overlap
     train_track_set = set()
@@ -634,10 +634,16 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
 
 
 def _generate_triplets_from_tracks(subgenre_tracks: Dict[str, Dict[str, List[str]]], 
-                                 split_name: str) -> List[Tuple[str, str, str, str]]:
+                                 split_name: str, config: ExperimentConfig) -> List[Tuple[str, str, str, str]]:
     """Generate triplets from a given set of tracks (train or test)."""
     all_triplets = []
     subgenre_list = list(subgenre_tracks.keys())
+    
+    # Log triplet generation configuration
+    logger.info(f"{split_name.capitalize()} triplet generation config:")
+    logger.info(f"  Max positive tracks per anchor: {config.data.max_positive_tracks}")
+    logger.info(f"  Triplets per positive track: {config.data.triplets_per_positive_track}")
+    logger.info(f"  Expected triplets per anchor: ~{config.data.max_positive_tracks * config.data.triplets_per_positive_track}")
     
     if len(subgenre_list) < 2:
         logger.warning(f"Only {len(subgenre_list)} subgenres available for {split_name} split")
@@ -674,15 +680,15 @@ def _generate_triplets_from_tracks(subgenre_tracks: Dict[str, Dict[str, List[str
             # Use ALL chunks as anchors
             for anchor_chunk in anchor_chunks:
                 
-                # Sample positive tracks (limit to avoid explosion)
-                max_positives = min(len(positive_tracks), 6)
+                # Sample positive tracks (configurable for cluster training)
+                max_positives = min(len(positive_tracks), config.data.max_positive_tracks)
                 positive_sample = random.sample(positive_tracks, max_positives)
                 
                 for positive_track in positive_sample:
                     positive_chunks = tracks[positive_track]
                     
-                    # Generate 1-2 triplets per positive track
-                    triplets_per_positive = min(2, len(positive_chunks))
+                    # Generate configurable triplets per positive track
+                    triplets_per_positive = min(config.data.triplets_per_positive_track, len(positive_chunks))
                     
                     for _ in range(triplets_per_positive):
                         positive_chunk = random.choice(positive_chunks)

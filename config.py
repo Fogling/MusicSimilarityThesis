@@ -70,6 +70,10 @@ class DataConfig:
     test_split_ratio: float = 0.1
     min_files_per_genre: int = 2
     
+    # Triplet generation parameters for cluster training
+    max_positive_tracks: int = 12  # Maximum positive tracks per anchor (balanced for clusters)
+    triplets_per_positive_track: int = 3  # Triplets per positive track (prevents overfitting)
+    
     # For backward compatibility with old split format
     use_legacy_splits: bool = False
     legacy_split_dir: Optional[str] = None
@@ -160,8 +164,14 @@ def create_default_config(test_run: bool = False) -> ExperimentConfig:
         # Reduce parameters for quick testing
         config.training.epochs = 2
         config.training.batch_size = 1
+        config.data.max_positive_tracks = 3  # Minimal for testing
+        config.data.triplets_per_positive_track = 1  # Minimal for testing
         config.experiment_name = "ast_triplet_test"
         config.description = "Quick test run with reduced parameters"
+    else:
+        # Cluster-optimized defaults for full training
+        config.experiment_name = "ast_triplet_cluster"
+        config.description = "Cluster training with optimized triplet generation"
     
     return config
 
