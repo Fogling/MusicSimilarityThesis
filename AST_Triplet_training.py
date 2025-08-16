@@ -546,16 +546,16 @@ def load_split_data(config: ExperimentConfig) -> Tuple[List, List]:
 
 
 def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
-    """Generate proper triplet splits ensuring positive samples are from different tracks."""
+    """Generate proper track-level splits to prevent data leakage, then create triplets."""
     chunks_dir = Path(config.data.chunks_dir)
     test_ratio = config.data.test_split_ratio
     
     if not chunks_dir.exists():
         raise FileNotFoundError(f"Chunks directory not found: {chunks_dir}")
     
-    logger.info("Generating triplets with proper cross-track sampling...")
+    logger.info("Generating track-level splits to prevent data leakage...")
     
-    # Organize files by subgenre and track
+    # Step 1: Organize files by subgenre and track
     subgenre_tracks = defaultdict(dict)  # {subgenre: {track_name: [chunk_files]}}
     
     for subdir in sorted(chunks_dir.iterdir()):
@@ -575,7 +575,7 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
         # Only keep tracks with at least 2 chunks
         valid_tracks = {name: chunks for name, chunks in tracks.items() if len(chunks) >= 2}
         
-        if len(valid_tracks) < 2:
+        if len(valid_tracks) < 4:  # Need at least 4 tracks to split meaningfully
             logger.warning(f"Subgenre {subgenre} has only {len(valid_tracks)} tracks with >=2 chunks, skipping")
             continue
             
@@ -583,24 +583,75 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
         total_chunks = sum(len(chunks) for chunks in valid_tracks.values())
         logger.info(f"Subgenre {subgenre}: {len(valid_tracks)} tracks, {total_chunks} chunks total")
     
-    # Generate triplets with proper cross-genre negatives
+    # Step 2: Split tracks (not triplets) into train/test sets
+    train_tracks = defaultdict(dict)  # {subgenre: {track_name: [chunk_files]}}
+    test_tracks = defaultdict(dict)   # {subgenre: {track_name: [chunk_files]}}
+    
+    for subgenre, tracks in subgenre_tracks.items():
+        track_names = list(tracks.keys())
+        random.shuffle(track_names)  # Randomize track order
+        
+        n_test_tracks = max(1, int(len(track_names) * test_ratio))
+        test_track_names = track_names[:n_test_tracks]
+        train_track_names = track_names[n_test_tracks:]
+        
+        # Assign tracks to train/test splits
+        for track_name in train_track_names:
+            train_tracks[subgenre][track_name] = tracks[track_name]
+        
+        for track_name in test_track_names:
+            test_tracks[subgenre][track_name] = tracks[track_name]
+        
+        logger.info(f"Subgenre {subgenre}: {len(train_track_names)} train tracks, {len(test_track_names)} test tracks")
+    
+    # Step 3: Generate triplets separately for train and test sets
+    logger.info("Generating training triplets from train tracks...")
+    train_triplets = _generate_triplets_from_tracks(train_tracks, "train")
+    
+    logger.info("Generating test triplets from test tracks...")
+    test_triplets = _generate_triplets_from_tracks(test_tracks, "test")
+    
+    # Verify no track overlap
+    train_track_set = set()
+    test_track_set = set()
+    
+    for subgenre, tracks in train_tracks.items():
+        for track_name in tracks.keys():
+            train_track_set.add(f"{subgenre}/{track_name}")
+    
+    for subgenre, tracks in test_tracks.items():
+        for track_name in tracks.keys():
+            test_track_set.add(f"{subgenre}/{track_name}")
+    
+    overlap = train_track_set.intersection(test_track_set)
+    if overlap:
+        raise ValueError(f"Track overlap detected between train/test: {overlap}")
+    
+    logger.info(f"✓ NO DATA LEAKAGE: {len(train_track_set)} unique train tracks, {len(test_track_set)} unique test tracks")
+    logger.info(f"Total: {len(train_triplets)} train triplets, {len(test_triplets)} test triplets")
+    
+    return train_triplets, test_triplets
+
+
+def _generate_triplets_from_tracks(subgenre_tracks: Dict[str, Dict[str, List[str]]], 
+                                 split_name: str) -> List[Tuple[str, str, str, str]]:
+    """Generate triplets from a given set of tracks (train or test)."""
     all_triplets = []
-    subgenre_triplets = defaultdict(list)
     subgenre_list = list(subgenre_tracks.keys())
     
     if len(subgenre_list) < 2:
-        raise ValueError("Need at least 2 subgenres to generate meaningful triplets")
+        logger.warning(f"Only {len(subgenre_list)} subgenres available for {split_name} split")
+        return []
     
     for subgenre in subgenre_list:
         tracks = subgenre_tracks[subgenre]
         track_names = list(tracks.keys())
-        triplets = []
         
         if len(track_names) < 2:
-            logger.warning(f"Subgenre {subgenre} has only {len(track_names)} tracks, skipping")
+            logger.warning(f"Subgenre {subgenre} has only {len(track_names)} tracks in {split_name}, skipping")
             continue
         
-        # Negative candidates: all tracks from DIFFERENT subgenres (computed once)
+        # Negative candidates: all tracks from DIFFERENT subgenres
         other_subgenres = [s for s in subgenre_list if s != subgenre]
         negative_chunks_pool = []
         for other_subgenre in other_subgenres:
@@ -608,29 +659,30 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
                 negative_chunks_pool.extend(other_chunks)
         
         if not negative_chunks_pool:
-            logger.warning(f"No negative samples available for subgenre {subgenre}")
+            logger.warning(f"No negative samples available for subgenre {subgenre} in {split_name}")
             continue
         
-        # True balanced sampling: use all tracks and chunks equally
+        triplets = []
+        
+        # Generate triplets within this subgenre
         for anchor_track in track_names:
             anchor_chunks = tracks[anchor_track]
             
             # Positive candidates: different tracks in SAME subgenre
             positive_tracks = [t for t in track_names if t != anchor_track]
             
-            # Use ALL chunks as anchors (not just first 2)
+            # Use ALL chunks as anchors
             for anchor_chunk in anchor_chunks:
                 
-                # Balanced positive sampling (no alphabetical bias)
-                # Sample a reasonable subset of positive tracks to avoid explosion
-                max_positives = min(len(positive_tracks), 8)  # Use up to 8 positive tracks
+                # Sample positive tracks (limit to avoid explosion)
+                max_positives = min(len(positive_tracks), 6)
                 positive_sample = random.sample(positive_tracks, max_positives)
                 
                 for positive_track in positive_sample:
                     positive_chunks = tracks[positive_track]
                     
-                    # Generate multiple triplets per positive track for better coverage
-                    triplets_per_positive = min(2, len(positive_chunks))  # Use up to 2 chunks per positive track
+                    # Generate 1-2 triplets per positive track
+                    triplets_per_positive = min(2, len(positive_chunks))
                     
                     for _ in range(triplets_per_positive):
                         positive_chunk = random.choice(positive_chunks)
@@ -641,25 +693,10 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
         
         random.shuffle(triplets)
         all_triplets.extend(triplets)
-        subgenre_triplets[subgenre] = triplets
-    
-    # Stratified split by subgenre  
-    train_triplets, test_triplets = [], []
-    
-    for subgenre, triplets in subgenre_triplets.items():
-        if not triplets:
-            continue
-            
-        n_test = max(1, int(len(triplets) * test_ratio))
-        test_triplets.extend(triplets[:n_test])
-        train_triplets.extend(triplets[n_test:])
         
-        logger.info(f"Subgenre {subgenre}: {len(triplets) - n_test} train, {n_test} test triplets")
+        logger.info(f"{split_name.capitalize()} - Subgenre {subgenre}: {len(triplets)} triplets from {len(track_names)} tracks")
     
-    logger.info(f"Total: {len(train_triplets)} train, {len(test_triplets)} test triplets")
-    logger.info("✓ Balanced triplet sampling: all tracks and chunks used equally, no alphabetical bias, proper cross-genre negatives")
-    
-    return train_triplets, test_triplets
+    return all_triplets
 
 
 def save_model_and_artifacts(model: ImprovedASTTripletWrapper, config: ExperimentConfig,
@@ -727,6 +764,27 @@ def main():
         logger.info("Loading data splits...")
         train_data, test_data = load_split_data(config)
         
+        # Save splits immediately to preserve split information
+        logger.info("Saving train/test splits...")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        splits_dir = Path(f"splits_{timestamp}")
+        splits_dir.mkdir(exist_ok=True)
+        
+        splits_path = splits_dir / "splits.json"
+        splits_data = {
+            "train_split": train_data,
+            "test_split": test_data,
+            "timestamp": timestamp,
+            "config_summary": {
+                "experiment_name": config.experiment_name,
+                "chunks_dir": config.data.chunks_dir,
+                "test_split_ratio": config.data.test_split_ratio
+            }
+        }
+        with open(splits_path, 'w') as f:
+            json.dump(splits_data, f, indent=2)
+        logger.info(f"Splits saved to {splits_path}")
+        
         # Create datasets
         logger.info("Creating datasets...")
         train_dataset = ImprovedTripletFeatureDataset(train_data, config)
@@ -755,7 +813,7 @@ def main():
             "dataloader_pin_memory": config.training.pin_memory,
             "report_to": "none",  # Disable wandb/tensorboard
             "logging_first_step": False,  # Don't log first step
-            "disable_tqdm": True,  # Disable tqdm progress bars to reduce noise
+            "disable_tqdm": False,  # Enable tqdm progress bars
             "log_level": "warning",  # Reduce HF Trainer's internal logging
             "seed": config.training.seed,
             "data_seed": config.training.seed,
