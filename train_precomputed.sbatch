@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --partition=study
-#SBATCH --job-name=ast-finetune
+#SBATCH --job-name=ast-3
 #SBATCH --gres=gpu:gtx:1
 #SBATCH --cpus-per-gpu=8
-#SBATCH --mem=48G
+#SBATCH --mem=64G
 #SBATCH --tmp=100G
-#SBATCH --time=1-10:00:00
+#SBATCH --time=2-00:00:00
 
 #exit on error or undef variables
 set -euo pipefail

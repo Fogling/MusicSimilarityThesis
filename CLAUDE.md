@@ -115,4 +115,5 @@ python extract_test_embeddings.py
 - Train/test splits are stratified by subgenre to ensure balanced evaluation
 
 ## Important Context
-- It is my wish to iteratively refactor and improve the main files AST_Triplet_Training.py, Preprocess_AST_features.py and TripletAudioDataset.py. This means replacing unclear or unneccessary Code with concise best practice Code that is easy to read and comprehend. Also I want to remove any unneccessary or unused parts of the code.
+- Current process: running python AST_Triplet_training.py --config train_from_precomputed
+- on remote cluster with unlimited RAM 

@@ -32,6 +32,8 @@ from transformers import ASTModel, TrainingArguments, Trainer, TrainerCallback
 from safetensors.torch import save_file, load_file
 from tqdm import tqdm
 from dataclasses import dataclass
+import threading
+from collections import OrderedDict
 
 from config import ExperimentConfig, load_or_create_config
 
@@ -181,26 +183,92 @@ def sanitize_dict_tensor(tensor_dict: Dict[str, Any]) -> Dict[str, torch.Tensor]
     
     return cleaned
 
+class LRUFeatureCache:   # Caching as of right now resulted in zero change to training speed, therefore its not in use
+    """
+    Simple LRU cache for .pt feature files with an approximate size limit (GB).
+    Uses file sizes to track capacity (fast + safe).
+    """
+    def __init__(self, max_gb: float):
+        self.max_bytes = int(max_gb * (1024 ** 3))
+        self.cur_bytes = 0
+        self.data: "OrderedDict[str, Dict[str, torch.Tensor]]" = OrderedDict()
+        self.lock = threading.Lock()
+
+    def _file_size(self, path: str) -> int:
+        try:
+            return os.path.getsize(path)
+        except Exception:
+            return 0
+
+    def get(self, path: str):
+        with self.lock:
+            v = self.data.get(path)
+            if v is not None:
+                self.data.move_to_end(path, last=True)
+            return v
+
+    def put(self, path: str, value: Dict[str, torch.Tensor]):
+        size = self._file_size(path)
+        with self.lock:
+            # If already there, refresh position only
+            if path in self.data:
+                self.data.move_to_end(path, last=True)
+                return
+            self.data[path] = value
+            self.cur_bytes += size
+            # Evict LRU until under budget
+            while self.cur_bytes > self.max_bytes and len(self.data) > 1:
+                old_path, _ = self.data.popitem(last=False)
+                self.cur_bytes -= self._file_size(old_path)
 
 class ImprovedTripletFeatureDataset(TorchDataset):
     """
     Improved triplet dataset with proper error handling, validation, and caching.
     """
     
-    def __init__(self, split_data: Union[List, Dict], config: ExperimentConfig):
-        """
-        Initialize dataset with improved data format support.
-        
-        Args:
-            split_data: Either legacy format (list of triplets) or new format (dict)
-            config: Experiment configuration
-        """
+    def __init__(self, split_data: Union[List, Dict], config: ExperimentConfig, split_name: str = "train"):
         self.config = config
+        self.split_name = split_name
         self.triplets = self._parse_split_data(split_data)
-        self.cache = {} if len(self.triplets) < 1000 else None  # Cache for small datasets
-        
-        logger.info(f"Initialized dataset with {len(self.triplets)} triplets")
-        logger.info(f"Caching {'enabled' if self.cache is not None else 'disabled'}")
+
+        # Decide whether to cache and/or preload from config flags
+        use_cache = (
+            self.config.data.enable_feature_caching and
+            ((split_name == "train" and self.config.data.cache_train_dataset) or
+            (split_name == "test" and self.config.data.cache_test_dataset))
+        )
+
+        self.file_cache = LRUFeatureCache(self.config.data.max_cache_size_gb) if use_cache else None
+        self._all_paths: Optional[List[str]] = None
+
+        logger.info(f"Initialized dataset ({split_name}) with {len(self.triplets)} triplets")
+        logger.info(f"Caching: {'enabled' if self.file_cache is not None else 'disabled'} "
+                    f"(max ~{self.config.data.max_cache_size_gb} GB)")
+        # Optional: preload
+        if self.file_cache is not None and self.config.data.preload_chunks:
+            self._preload_all_features()
+    
+    def _unique_paths(self) -> List[str]:
+        if self._all_paths is not None:
+            return self._all_paths
+        paths = set()
+        for a, p, n, _ in self.triplets:
+            paths.add(a); paths.add(p); paths.add(n)
+        self._all_paths = sorted(paths)
+        return self._all_paths
+
+    def _preload_all_features(self) -> None:
+        """Eagerly load all unique .pt files into the LRU cache at startup."""
+        paths = self._unique_paths()
+        logger.info(f"Preloading {len(paths)} unique chunk files for split '{self.split_name}'...")
+        for path in tqdm(paths, desc=f"Preloading {self.split_name}"):
+            try:
+                if self.file_cache.get(path) is None:
+                    tensor_dict = torch.load(path, map_location='cpu', weights_only=True)
+                    cleaned = sanitize_dict_tensor(tensor_dict)
+                    self.file_cache.put(path, cleaned)
+            except Exception as e:
+                logger.warning(f"Preload failed for {path}: {e}")
     
     def _parse_split_data(self, split_data: Union[List, Dict]) -> List[Tuple[str, str, str, str]]:
         """Parse split data from either legacy or new format."""
@@ -227,29 +295,26 @@ class ImprovedTripletFeatureDataset(TorchDataset):
             raise ValueError(f"Unsupported split data format: {type(split_data)}")
     
     def _safe_load_tensor(self, filepath: str) -> Dict[str, torch.Tensor]:
-        """Safely load tensor with comprehensive error handling."""
-        if self.cache is not None and filepath in self.cache:
-            return self.cache[filepath]
-        
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Tensor file not found: {filepath}")
-        
+
+        # 1) cache hit?
+        if self.file_cache is not None:
+            cached = self.file_cache.get(filepath)
+            if cached is not None:
+                return cached
+
         try:
-            # Use weights_only=True for security
             tensor_dict = torch.load(filepath, map_location='cpu', weights_only=True)
-            
             if not isinstance(tensor_dict, dict):
                 raise TripletValidationError(f"Expected dict from {filepath}, got {type(tensor_dict)}")
-            
-            # Validate and clean
             cleaned = sanitize_dict_tensor(tensor_dict)
-            
-            # Cache if enabled
-            if self.cache is not None:
-                self.cache[filepath] = cleaned
-            
+
+            # 2) store in cache
+            if self.file_cache is not None:
+                self.file_cache.put(filepath, cleaned)
+
             return cleaned
-            
         except Exception as e:
             logger.error(f"Error loading {filepath}: {e}")
             raise TripletValidationError(f"Failed to load {filepath}: {e}")
@@ -301,7 +366,7 @@ class FastSafeCollator:
     This preserves your robust logging and error handling while cutting
     redundant work each iteration.
     """
-    def __init__(self, validate_every_n: int = 0, logger_=logger):
+    def __init__(self, validate_every_n: int = 0, logger_=logger, quiet: bool = True):
         """
         Args:
             validate_every_n: if > 0, re-run full validation every N batches
@@ -311,6 +376,8 @@ class FastSafeCollator:
         self.batch_count: int = 0
         self.validate_every_n = max(0, int(validate_every_n))
         self.logger = logger_
+        self.quiet = quiet
+        self._logged_schema_once = False
 
     def _to_tensor_and_squeeze(self, t: Any, name: str) -> torch.Tensor:
         # Convert lists to tensors if needed
@@ -403,12 +470,14 @@ class FastSafeCollator:
             # First time: capture schema from the first item (anchor_input)
             if self.schema is None:
                 try:
-                    self.schema = self._capture_schema_from_item(batch[0])
-                    self.logger.info(
-                        f"[Collate] Captured schema from first batch: "
-                        f"keys={self.schema.inner_keys}, "
-                        f"shapes={{k: tuple(v) for k,v in self.schema.shapes.items()}}"
-                    )
+                    if (not self.quiet) and (not self._logged_schema_once) and \
+                        self.logger.isEnabledFor(logging.DEBUG):
+                        shapes_map = {k: tuple(v) for k, v in self.schema.shapes.items()}
+                        self.logger.debug(
+                        "[Collate] Captured schema from first batch | keys=%s | shapes=%s",
+                        self.schema.inner_keys, shapes_map
+                        )
+                        self._logged_schema_once = True
                 except Exception as e:
                     self.logger.error(f"[Collate] Failed to capture schema: {e}")
                     raise
@@ -823,6 +892,29 @@ def save_model_and_artifacts(model: ImprovedASTTripletWrapper, config: Experimen
         logger.error(f"Error saving model artifacts: {e}")
         raise
 
+class DataLoaderTrainer(Trainer):
+    """Trainer that forwards full DataLoader knobs (prefetch_factor, persistent_workers, etc.)."""
+    def _build_dl(self, dataset, shuffle: bool):
+        args = self.args
+        return DataLoader(
+            dataset,
+            batch_size=args.train_batch_size if shuffle else args.eval_batch_size,
+            shuffle=shuffle,
+            collate_fn=self.data_collator,
+            num_workers=args.dataloader_num_workers,
+            pin_memory=args.dataloader_pin_memory,
+            persistent_workers=getattr(args, "dataloader_persistent_workers", False),
+            prefetch_factor=getattr(args, "dataloader_prefetch_factor", 2),
+            drop_last=False
+        )
+
+    def get_train_dataloader(self):
+        return self._build_dl(self.train_dataset, shuffle=True)
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        ds = eval_dataset if eval_dataset is not None else self.eval_dataset
+        return self._build_dl(ds, shuffle=False)
+
 
 def main():
     """Main training function with comprehensive error handling."""
@@ -876,8 +968,8 @@ def main():
         
         # Create datasets
         logger.info("Creating datasets...")
-        train_dataset = ImprovedTripletFeatureDataset(train_data, config)
-        test_dataset = ImprovedTripletFeatureDataset(test_data, config)
+        train_dataset = ImprovedTripletFeatureDataset(train_data, config, split_name="train")
+        test_dataset  = ImprovedTripletFeatureDataset(test_data,  config, split_name="test")
         
         # Initialize model
         logger.info("Initializing model...")
@@ -900,8 +992,11 @@ def main():
             "logging_steps": config.training.logging_steps,
             "dataloader_num_workers": config.training.num_workers,
             "dataloader_pin_memory": config.training.pin_memory,
+            "dataloader_prefetch_factor": config.training.prefetch_factor,
+            "dataloader_persistent_workers": config.training.persistent_workers,
             "report_to": "none",  # Disable wandb/tensorboard
-            "logging_first_step": False,  # Don't log first step
+            "logging_first_step": True,  # Don't log first step
+            "logging_strategy":"steps",
             "disable_tqdm": False,  # Enable tqdm progress bars
             "log_level": "warning",  # Reduce HF Trainer's internal logging
             "seed": config.training.seed,
@@ -917,7 +1012,7 @@ def main():
         training_args = TrainingArguments(**training_args_dict)
         
         # Initialize trainer with custom callback
-        trainer = Trainer(
+        trainer = DataLoaderTrainer(
             model=model,
             args=training_args,
             train_dataset=train_dataset,
