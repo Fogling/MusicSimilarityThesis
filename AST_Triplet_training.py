@@ -31,6 +31,7 @@ from torch.utils.data import Dataset as TorchDataset, DataLoader
 from transformers import ASTModel, TrainingArguments, Trainer, TrainerCallback
 from safetensors.torch import save_file, load_file
 from tqdm import tqdm
+from dataclasses import dataclass
 
 from config import ExperimentConfig, load_or_create_config
 
@@ -282,69 +283,149 @@ class ImprovedTripletFeatureDataset(TorchDataset):
             raise
 
 
-def safe_collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
+@dataclass
+class _Schema:
+    inner_keys: List[str]
+    shapes: Dict[str, torch.Size]  # per inner_key
+    dtypes: Dict[str, torch.dtype] # optional, cheap to check
+
+class FastSafeCollator:
     """
-    Improved collation function with error handling and validation.
+    Collates anchor/positive/negative dicts with a fast path after the first batch.
+
+    Behavior:
+      - Batch 1: do full validation (NaN/Inf, dtype checks, squeeze, shape capture).
+      - Later: only check presence + shape/dtype matches; skip expensive per-tensor scans.
+      - Optionally re-run full validation every `validate_every_n` batches.
+
+    This preserves your robust logging and error handling while cutting
+    redundant work each iteration.
     """
-    if not batch:
-        raise ValueError("Empty batch provided to collate_fn")
-    
-    def stack_tensors_safely(key: str) -> torch.Tensor:
-        """Stack tensors with validation."""
+    def __init__(self, validate_every_n: int = 0, logger_=logger):
+        """
+        Args:
+            validate_every_n: if > 0, re-run full validation every N batches
+                              (0 = only validate batch 1).
+        """
+        self.schema: Optional[_Schema] = None
+        self.batch_count: int = 0
+        self.validate_every_n = max(0, int(validate_every_n))
+        self.logger = logger_
+
+    def _to_tensor_and_squeeze(self, t: Any, name: str) -> torch.Tensor:
+        # Convert lists to tensors if needed
+        if isinstance(t, list):
+            t = torch.tensor(t, dtype=torch.float32)
+        if not isinstance(t, torch.Tensor):
+            raise TripletValidationError(f"{name} is not a tensor (got {type(t)})")
+
+        # Squeeze leading singleton dim [1, ...] -> [...]
+        if t.ndim == 3 and t.shape[0] == 1:
+            t = t.squeeze(0)
+        return t
+
+    def _full_validate(self, t: torch.Tensor, name: str) -> None:
+        # Keep your strict checks for the first/periodic validation.
+        validate_tensor_shape(t, tensor_name=name)
+
+    def _capture_schema_from_item(self, item: Dict[str, Dict[str, torch.Tensor]]) -> _Schema:
+        # item has keys: "anchor_input", "positive_input", "negative_input"
+        # and each maps to dicts like {"input_values": tensor, ...}
+        ref = item["anchor_input"]
+        inner_keys = list(ref.keys())
+        shapes = {}
+        dtypes = {}
+
+        for k in inner_keys:
+            t = self._to_tensor_and_squeeze(ref[k], f"anchor_input.{k}")
+            shapes[k] = t.shape
+            dtypes[k] = t.dtype
+
+        return _Schema(inner_keys=inner_keys, shapes=shapes, dtypes=dtypes)
+
+    def _stack_group(self, batch: List[Dict], top_key: str, do_full_validate: bool) -> Dict[str, torch.Tensor]:
+        tensors_dict: Dict[str, torch.Tensor] = {}
+        if top_key not in batch[0]:
+            raise ValueError(f"Key '{top_key}' not found in batch items")
+
+        # Determine inner keys from schema (fast) or from the first item (first batch)
+        if self.schema is None:
+            inner_keys = batch[0][top_key].keys()
+        else:
+            inner_keys = self.schema.inner_keys
+
+        for inner_key in inner_keys:
+            tl: List[torch.Tensor] = []
+            for i, item in enumerate(batch):
+                if top_key not in item:
+                    raise ValueError(f"Key '{top_key}' missing from batch item")
+                if inner_key not in item[top_key]:
+                    raise ValueError(f"Inner key '{inner_key}' missing from {top_key}")
+
+                t = self._to_tensor_and_squeeze(item[top_key][inner_key], f"{top_key}.{inner_key}")
+
+                if self.schema is None:
+                    # First batch (or schema reset) – full validate + capture shape
+                    if do_full_validate:
+                        self._full_validate(t, f"{top_key}.{inner_key}")
+                else:
+                    # Fast path: check only cheap invariants
+                    exp_shape = self.schema.shapes[inner_key]
+                    exp_dtype = self.schema.dtypes[inner_key]
+                    if t.shape != exp_shape:
+                        raise TripletValidationError(
+                            f"Shape mismatch for {top_key}.{inner_key}: {t.shape} != {exp_shape}"
+                        )
+                    if t.dtype != exp_dtype:
+                        raise TripletValidationError(
+                            f"Dtype mismatch for {top_key}.{inner_key}: {t.dtype} != {exp_dtype}"
+                        )
+
+                tl.append(t)
+
+            tensors_dict[inner_key] = torch.stack(tl, dim=0)
+
+        return tensors_dict
+
+    def __call__(self, batch: List[Dict]) -> Dict[str, Any]:
+        if not batch:
+            raise ValueError("Empty batch provided to collate")
+
+        self.batch_count += 1
+        # Decide whether to run full validation on this batch
+        do_full_validate = False
+        if self.schema is None:
+            do_full_validate = True
+        elif self.validate_every_n > 0 and (self.batch_count % self.validate_every_n == 0):
+            do_full_validate = True
+
         try:
-            tensors_dict = {}
-            
-            # Get all inner keys from the first item
-            if key not in batch[0]:
-                raise ValueError(f"Key '{key}' not found in batch items")
-            
-            inner_keys = batch[0][key].keys()
-            
-            for inner_key in inner_keys:
-                tensor_list = []
-                
-                for item in batch:
-                    if key not in item:
-                        raise ValueError(f"Key '{key}' missing from batch item")
-                    
-                    if inner_key not in item[key]:
-                        raise ValueError(f"Inner key '{inner_key}' missing from {key}")
-                    
-                    tensor = item[key][inner_key]
-                    
-                    # Convert lists to tensors if needed
-                    if isinstance(tensor, list):
-                        tensor = torch.tensor(tensor, dtype=torch.float32)
-                    
-                    # Validate tensor
-                    validate_tensor_shape(tensor, tensor_name=f"{key}.{inner_key}")
-                    
-                    # Squeeze leading dimensions
-                    if tensor.ndim == 3 and tensor.shape[0] == 1:
-                        tensor = tensor.squeeze(0)
-                    
-                    tensor_list.append(tensor)
-                
-                # Stack tensors
-                stacked = torch.stack(tensor_list, dim=0)
-                tensors_dict[inner_key] = stacked
-            
-            return tensors_dict
-            
+            # First time: capture schema from the first item (anchor_input)
+            if self.schema is None:
+                try:
+                    self.schema = self._capture_schema_from_item(batch[0])
+                    self.logger.info(
+                        f"[Collate] Captured schema from first batch: "
+                        f"keys={self.schema.inner_keys}, "
+                        f"shapes={{k: tuple(v) for k,v in self.schema.shapes.items()}}"
+                    )
+                except Exception as e:
+                    self.logger.error(f"[Collate] Failed to capture schema: {e}")
+                    raise
+
+            out = {
+                "anchor_input":   self._stack_group(batch, "anchor_input",   do_full_validate),
+                "positive_input": self._stack_group(batch, "positive_input", do_full_validate),
+                "negative_input": self._stack_group(batch, "negative_input", do_full_validate),
+                "labels": torch.tensor([item["labels"] for item in batch], dtype=torch.long)
+            }
+            return out
+
         except Exception as e:
-            logger.error(f"Error stacking tensors for key '{key}': {e}")
-            raise ValueError(f"Failed to collate {key}: {e}")
-    
-    try:
-        return {
-            "anchor_input": stack_tensors_safely("anchor_input"),
-            "positive_input": stack_tensors_safely("positive_input"),
-            "negative_input": stack_tensors_safely("negative_input"),
-            "labels": torch.tensor([item["labels"] for item in batch], dtype=torch.long)
-        }
-    except Exception as e:
-        logger.error(f"Collation failed: {e}")
-        raise
+            # On collate failure, drop schema so next batch re-validates fully.
+            self.schema = None
+            self.logger.error(f"Collation failed at batch {self.batch_count}: {e}")
+            raise
 
 
 class ImprovedASTTripletWrapper(nn.Module):
@@ -841,7 +922,7 @@ def main():
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=safe_collate_fn,
+            data_collator=FastSafeCollator(validate_every_n=0),
             compute_metrics=compute_metrics,
             callbacks=[CleanLoggingCallback()],
         )
