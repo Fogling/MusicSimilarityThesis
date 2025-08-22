@@ -933,6 +933,35 @@ def main():
         logger.info("Loading configuration...")
         config = load_or_create_config(args.config, test_run=args.test_run)
         config.validate()
+
+        # Optional: set matmul precision hint (Ampere+)
+        if getattr(config.training, "set_float32_matmul_precision", None):
+            try:
+                torch.set_float32_matmul_precision(config.training.set_float32_matmul_precision)
+                logger.info(f"set_float32_matmul_precision={config.training.set_float32_matmul_precision}")
+            except Exception as e:
+                logger.warning(f"Could not set float32 matmul precision: {e}")
+
+        # TF32 backend toggles (effective on Ampere+, harmless elsewhere)
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = bool(config.training.allow_tf32_matmul)
+            torch.backends.cudnn.allow_tf32      = bool(config.training.allow_tf32_cudnn)
+            logger.info(f"TF32: matmul={torch.backends.cuda.matmul.allow_tf32}, cudnn={torch.backends.cudnn.allow_tf32}")
+        except Exception as e:
+            logger.warning(f"Could not set TF32 backend flags: {e}")
+
+        # Decide effective precision (with safety checks and clear logging)
+        want_bf16 = bool(getattr(config.training, "bf16", False))
+        want_fp16 = bool(getattr(config.training, "fp16", False))
+        want_tf32 = bool(getattr(config.training, "tf32", False))
+
+        bf16_supported = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        use_bf16 = want_bf16 and bf16_supported
+        use_fp16 = (not use_bf16) and want_fp16  # fp16 only if bf16 wasn’t taken
+
+        if want_bf16 and not bf16_supported:
+            logger.warning("bf16 requested but not supported on this GPU/PyTorch build. Falling back to "
+                        f"{'fp16' if use_fp16 else 'fp32'}.")
         
         logger.info(f"Experiment: {config.experiment_name}")
         if config.description:
@@ -1002,6 +1031,15 @@ def main():
             "seed": config.training.seed,
             "data_seed": config.training.seed,
         }
+
+        # Precision / GPU knobs
+        training_args_dict.update({
+            "bf16": config.training.bf16,
+            "fp16": config.training.fp16,
+            "tf32": config.training.tf32,
+        })
+
+        logger.info(f"Precision summary -> bf16={use_bf16}, fp16={use_fp16}, tf32={want_tf32}")
         
         # Add optional parameters if they exist in config
         if hasattr(config.training, 'save_steps') and config.training.save_steps:

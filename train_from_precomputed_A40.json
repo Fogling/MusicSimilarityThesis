@@ -1,0 +1,57 @@
+{
+    "model": {
+        "pretrained_model": "MIT/ast-finetuned-audioset-10-10-0.4593",
+        "hidden_sizes": [
+            512,
+            128
+        ],
+        "activation": "relu",
+        "dropout_rate": 0.15,
+        "output_dim": 128
+    },
+    "training": {
+        "batch_size": 8,
+        "epochs": 10,
+        "learning_rate": 2e-5,
+        "weight_decay": 0.05,
+        "gradient_accumulation_steps": 4,
+        "warmup_ratio": 0.1,
+        "triplet_margin": 0.5,
+        "num_workers": 10,
+        "pin_memory": true,
+        "prefetch_factor": 4,
+        "persistent_workers": true,
+        "eval_strategy": "epoch",
+        "save_strategy": "steps",
+        "logging_steps": 100,
+        "save_steps": 1000,
+        "eval_steps": 500,
+        "seed": 42,
+        "force_single_gpu": true,
+        "bf16": true,
+        "fp16": false,
+        "tf32": true,
+        "allow_tf32_matmul": true,
+        "allow_tf32_cudnn": true,
+        "set_float32_matmul_precision": "high"
+    },
+    "data": {
+        "chunks_dir": "precomputed_AST",
+        "test_split_ratio": 0.15,
+        "min_files_per_genre": 2,
+        "max_positive_tracks": 4,
+        "triplets_per_positive_track": 2,
+        "enable_feature_caching": false,
+        "cache_train_dataset": false,
+        "cache_test_dataset": false,
+        "max_cache_size_gb": 1,
+        "preload_chunks": false
+    },
+    "paths": {
+        "model_output_dir": "ast_triplet_output",
+        "log_dir": "logs",
+        "checkpoint_dir": null
+    },
+    "experiment_name": "from_precomputed_A40_bf16",
+    "description": "A40: bf16+TF32, larger batch, higher dataloader throughput"
+}

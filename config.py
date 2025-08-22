@@ -53,6 +53,16 @@ class TrainingConfig:
     
     # GPU configuration
     force_single_gpu: bool = False  # Force single GPU mode even with multiple GPUs available
+
+    # Mixed precision & math mode (defaults are safe for GTX 1080/1080 Ti)
+    bf16: bool = False                 # Ampere+ only; leave False on GTX 1080
+    fp16: bool = False                 # Not recommended on GTX 1080; keep False
+    tf32: bool = False                 # Ampere+ only; keep False on GTX 1080
+
+    # Low-level PyTorch backend switches
+    allow_tf32_matmul: bool = False    # torch.backends.cuda.matmul.allow_tf32
+    allow_tf32_cudnn: bool = False     # torch.backends.cudnn.allow_tf32
+    set_float32_matmul_precision: Optional[str] = None  # "high"/"medium"/"highest" or None
     
     def __post_init__(self):
         """Validate configuration values."""
