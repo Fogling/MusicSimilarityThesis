@@ -1025,7 +1025,6 @@ def main():
             "dataloader_persistent_workers": config.training.persistent_workers,
             "report_to": "none",  # Disable wandb/tensorboard
             "logging_first_step": True,  # Don't log first step
-            "logging_strategy":"steps",
             "disable_tqdm": False,  # Enable tqdm progress bars
             "log_level": "warning",  # Reduce HF Trainer's internal logging
             "seed": config.training.seed,

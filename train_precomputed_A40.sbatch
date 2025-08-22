@@ -2,8 +2,8 @@
 #SBATCH --partition=study
 #SBATCH --job-name=ast-a40
 #SBATCH --gres=gpu:a40:1
-#SBATCH --cpus-per-gpu=12
-#SBATCH --mem=48G
+#SBATCH --cpus-per-gpu=14
+#SBATCH --mem=64G
 #SBATCH --tmp=100G
 #SBATCH --time=2-00:00:00
 #SBATCH --mail-type=ALL 
