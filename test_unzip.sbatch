@@ -11,44 +11,74 @@
 set -euo pipefail
 
 ######### EDIT THESE #########
-ARCHIVE="$HOME/thesis/precomputed_AST.zip"
+ARCHIVE="$HOME/thesis/precomputed_AST.zip"          # .zip or .tar.gz both ok
 CONFIG_JSON="$HOME/thesis/train_from_precomputed.json"
+TRAIN_PY="$HOME/thesis/AST_Triplet_training.py"
+OUT_BASE="$HOME/thesis/runs"                        # where results will be copied
 ################################
 
-######### EDIT THESE #########
-ARCHIVE="$HOME/thesis/precomputed_AST.zip"       # supports .zip, .tar.gz, .tgz
-################################
+# 1) Friendly info
+echo "[INFO] SLURM_JOB_TMP is: ${SLURM_JOB_TMP}"
+echo "[INFO] Using GPU: ${CUDA_VISIBLE_DEVICES:-unset}"
 
-echo "=== Starting staging test ==="
-echo "[INFO] SLURM_JOB_TMP = ${SLURM_JOB_TMP}"
+# CPU/GPU balance
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export BLIS_NUM_THREADS=1
 
-# 1) Check source archive exists
-if [[ ! -f "$ARCHIVE" ]]; then
-    echo "[ERROR] Archive not found: $ARCHIVE"
-    exit 1
-fi
-echo "[OK] Found archive at $ARCHIVE"
+start_time=$(date +%s)
 
-# 2) Copy archive into node-local SSD
-cp -v "$ARCHIVE" "$SLURM_JOB_TMP/"
-echo "[OK] Copied archive to $SLURM_JOB_TMP"
+# 3) Stage data on the node-local SSD
+echo "[INFO] Staging archive to node SSD..."
+cp -v "${ARCHIVE}" "${SLURM_JOB_TMP}//"
 
-# 3) Unpack into SSD
-cd "$SLURM_JOB_TMP"
-fname="$(basename "$ARCHIVE")"
-if [[ "$fname" == *.zip ]]; then
-    unzip -q "$fname"
-elif [[ "$fname" == *.tar.gz ]] || [[ "$fname" == *.tgz ]]; then
-    tar -xzf "$fname"
+echo "[INFO] Unpacking on SSD..."
+cd "${SLURM_JOB_TMP}"
+
+fname="$(basename "${ARCHIVE}")"
+if [[ "${fname}" == *.zip ]]; then
+  unzip -q "${fname}"
+elif [[ "${fname}" == *.tar.gz || "${fname}" == *.tgz ]]; then
+  tar -xzf "${fname}"
 else
-    echo "[ERROR] Unsupported archive type: $fname"
-    exit 2
+  echo "[ERROR] Unsupported archive type: ${fname}" >&2
+  exit 1
 fi
-echo "[OK] Unpacked archive"
+echo "[OK] Unpacked. Top-level contents:"
+find . -maxdepth 2 -type d | sed 's#^\./##'
 
-# 4) Show extracted structure (top 2 levels)
-echo "=== Extracted tree ==="
-find "$SLURM_JOB_TMP" -maxdepth 2 -type d -print
-find "$SLURM_JOB_TMP" -maxdepth 2 -type f | head -n 10
+# 4) Run training (WORKING DIR = SSD)
+#    Your config uses data.chunks_dir="precomputed_AST". Because we are now
+#    in $SLURM_JOB_TMP and we unpacked here, the relative path resolves
+#    correctly. Inside Python you can also do: cache = os.environ["SLURM_JOB_TMP"].
+echo "[INFO] Starting training..."
+python "${TRAIN_PY}" --config "${CONFIG_JSON}"
 
-echo "=== Done ==="
+# 5) (Optional) Collect results back to $HOME in a run-specific folder
+RUN_DIR="${OUT_BASE}/${SLURM_JOB_NAME}.${SLURM_JOB_ID}"
+mkdir -p "${RUN_DIR}"
+
+echo "[INFO] Collecting artifacts to ${RUN_DIR} ..."
+# trainer outputs (if any), split info, final model folders, logs
+shopt -s nullglob
+for p in \
+  fully_trained_models_* \
+  splits_* \
+  ast_triplet_output \
+  logs \
+  *.log
+do
+  if [[ -e "$p" ]]; then
+    echo "  -> copying $p"
+    cp -r "$p" "${RUN_DIR}/"
+  fi
+done
+shopt -u nullglob
+
+echo "[DONE] Everything copied to: ${RUN_DIR}"
+
+end_time=$(date +%s)
+runtime=$((end_time - start_time))
+echo "Job runtime: $runtime seconds ($(date -ud @$runtime +%H:%M:%S))"

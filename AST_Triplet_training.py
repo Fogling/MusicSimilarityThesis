@@ -34,6 +34,8 @@ from tqdm import tqdm
 
 from config import ExperimentConfig, load_or_create_config
 
+cache = os.environ['SLURM_JOB_TMP']
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -356,7 +358,7 @@ class ImprovedASTTripletWrapper(nn.Module):
         
         try:
             logger.info(f"Loading pretrained model: {config.model.pretrained_model}")
-            self.ast = ASTModel.from_pretrained(config.model.pretrained_model)
+            self.ast = ASTModel.from_pretrained(config.model.pretrained_model, cache_dir=cache)
             
         except Exception as e:
             raise ModelLoadError(f"Failed to load AST model: {e}")

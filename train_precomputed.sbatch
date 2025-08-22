@@ -1,91 +1,84 @@
 #!/bin/bash
 #SBATCH --partition=study
 #SBATCH --job-name=ast-finetune
-#SBATCH -o %x.%j.log
-#SBATCH -e %o
 #SBATCH --gres=gpu:gtx:1
 #SBATCH --cpus-per-gpu=8
 #SBATCH --mem=48G
 #SBATCH --tmp=100G
-#SBATCH --time=1-00:00:00
+#SBATCH --time=1-10:00:00
 
 #exit on error or undef variables
 set -euo pipefail
 
 ######### EDIT THESE #########
-# 1) Where the archive lives on the cluster (shared disk)
-ARCHIVE="~/thesis/precomputed_AST.zip"        # or .tar.gz
-# 2) A shared directory to collect results after the job
-OUT_BASE="/path/to/ast_runs"
-# 3) Your training script and config (already in repo/workdir)
-TRAIN_SCRIPT="AST_Triplet_training.py"
-CONFIG_JSON="train_from_precomputed.json"     # will be copied & patched
+ARCHIVE="$HOME/thesis/precomputed_AST.zip"          # .zip or .tar.gz both ok
+CONFIG_JSON="$HOME/thesis/train_from_precomputed.json"
+TRAIN_PY="$HOME/thesis/AST_Triplet_training.py"
+OUT_BASE="$HOME/thesis/runs"                        # where results will be copied
 ################################
 
-# Guard against thread oversubscription
+# 1) Friendly info
+echo "[INFO] SLURM_JOB_TMP is: ${SLURM_JOB_TMP}"
+echo "[INFO] Using GPU: ${CUDA_VISIBLE_DEVICES:-unset}"
+
+# CPU/GPU balance
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
+export BLIS_NUM_THREADS=1
 
-# Scratch on node-local SSD
-SCRATCH="${SLURM_JOB_TMP:-/tmp}/ast_job_${SLURM_JOB_ID}"
-mkdir -p "$SCRATCH"/{archive,features,run,logs}
-echo "[INFO] SCRATCH: $SCRATCH"
+start_time=$(date +%s)
 
-echo "[STEP] Copy archive to SSD..."
-cp -f "$ARCHIVE" "$SCRATCH/archive/"
+# 3) Stage data on the node-local SSD
+echo "[INFO] Staging archive to node SSD..."
+cp -v "${ARCHIVE}" "${SLURM_JOB_TMP}//"
 
-echo "[STEP] Unpack archive..."
-cd "$SCRATCH/preprocessed_features"
-fname="$(basename "$ARCHIVE")"
-if [[ "$fname" == *.zip ]]; then
-    unzip -q "../archive/$fname"
-elif [[ "$fname" == *.tar.gz ]] || [[ "$fname" == *.tgz ]]; then
-    tar -xzf "../archive/$fname"
+echo "[INFO] Unpacking on SSD..."
+cd "${SLURM_JOB_TMP}"
+
+fname="$(basename "${ARCHIVE}")"
+if [[ "${fname}" == *.zip ]]; then
+  unzip -q "${fname}"
+elif [[ "${fname}" == *.tar.gz || "${fname}" == *.tgz ]]; then
+  tar -xzf "${fname}"
 else
-    echo "[ERROR] Unsupported archive type: $fname"
-    exit 2
+  echo "[ERROR] Unsupported archive type: ${fname}" >&2
+  exit 1
 fi
+echo "[OK] Unpacked. Top-level contents:"
+find . -maxdepth 2 -type d | sed 's#^\./##'
 
-# Detect the top-level extracted folder (assumes you zipped a folder, not just loose files)
-# If you followed the advice, this should be 'precomputed_AST'
-TOPDIR="$(find . -maxdepth 1 -mindepth 1 -type d | head -n1)"
-if [[ -z "$TOPDIR" ]]; then
-    echo "[ERROR] Could not find extracted feature folder."
-    exit 3
-fi
+# 4) Run training (WORKING DIR = SSD)
+#    Your config uses data.chunks_dir="precomputed_AST". Because we are now
+#    in $SLURM_JOB_TMP and we unpacked here, the relative path resolves
+#    correctly. Inside Python you can also do: cache = os.environ["SLURM_JOB_TMP"].
+echo "[INFO] Starting training..."
+python "${TRAIN_PY}" --config "${CONFIG_JSON}"
 
-# Sanity check: we should see .pt files somewhere beneath TOPDIR
-PT_COUNT="$(find "$TOPDIR" -type f -name "*.pt" | wc -l)"
-if [[ "$PT_COUNT" -lt 1 ]]; then
-    echo "[ERROR] No .pt files found under $TOPDIR"
-    find "$TOPDIR" -maxdepth 2 -type d -print
-    exit 4
-fi
-FEATURES_DIR="$(realpath "$TOPDIR")"
-echo "[INFO] Features dir: $FEATURES_DIR  (pt files: $PT_COUNT)"
+# 5) (Optional) Collect results back to $HOME in a run-specific folder
+RUN_DIR="${OUT_BASE}/${SLURM_JOB_NAME}.${SLURM_JOB_ID}"
+mkdir -p "${RUN_DIR}"
 
-# Prepare a job-local config that points to the SSD copy
-echo "[STEP] Prepare config..."
-cp -f "$CONFIG_JSON" "$SCRATCH/run/config.json"
-# Patch data.chunks_dir in JSON (requires jq; most clusters have it. If not, see note below)
-jq --arg p "$FEATURES_DIR" '.data.chunks_dir = $p' "$SCRATCH/run/config.json" > "$SCRATCH/run/config.patched.json"
-mv "$SCRATCH/run/config.patched.json" "$SCRATCH/run/config.json"
+echo "[INFO] Collecting artifacts to ${RUN_DIR} ..."
+# trainer outputs (if any), split info, final model folders, logs
+shopt -s nullglob
+for p in \
+  fully_trained_models_* \
+  splits_* \
+  ast_triplet_output \
+  logs \
+  *.log
+do
+  if [[ -e "$p" ]]; then
+    echo "  -> copying $p"
+    cp -r "$p" "${RUN_DIR}/"
+  fi
+done
+shopt -u nullglob
 
-# Optional: show a couple of example files
-echo "[INFO] Example feature files:"
-find "$FEATURES_DIR" -type f -name "*.pt" | head -n 5
+echo "[DONE] Everything copied to: ${RUN_DIR}"
 
-# Run training from SSD
-echo "[STEP] Start training..."
-cd "$SCRATCH/run"
-python "$SLURM_SUBMIT_DIR/$TRAIN_SCRIPT" --config "$SCRATCH/run/config.json" -v
-
-# Collect outputs
-JOB_OUT="$OUT_BASE/${SLURM_JOB_ID}"
-mkdir -p "$JOB_OUT"
-echo "[STEP] Copy results back to shared disk: $JOB_OUT"
-rsync -a "$SCRATCH/run/" "$JOB_OUT/run/"
-rsync -a "$SCRATCH/features/" "$JOB_OUT/features_copy/" --delete  # optional snapshot of what we trained on
-echo "[DONE] Outputs saved to $JOB_OUT"
+end_time=$(date +%s)
+runtime=$((end_time - start_time))
+echo "Job runtime: $runtime seconds ($(date -ud @$runtime +%H:%M:%S))"
