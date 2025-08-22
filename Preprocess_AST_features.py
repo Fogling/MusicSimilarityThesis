@@ -51,7 +51,7 @@ class PreprocessingConfig:
     """Configuration for preprocessing."""
     # Input/Output
     wav_dir: str = "WAV"
-    output_dir: str = "preprocessed_features"
+    output_dir: str = "precomputed_AST"
     
     # Audio processing
     chunk_duration: int = 10  # seconds

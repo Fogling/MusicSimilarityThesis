@@ -38,6 +38,8 @@ class TrainingConfig:
     # Data loading
     num_workers: int = 2
     pin_memory: bool = False
+    prefetch_factor: int = 2
+    persistent_workers: bool = True
     
     # Training strategy
     eval_strategy: str = "epoch"
@@ -67,7 +69,7 @@ class TrainingConfig:
 @dataclass
 class DataConfig:
     """Data processing configuration."""
-    chunks_dir: str = "preprocessed_features"
+    chunks_dir: str = "WAV"
     split_file_train: Optional[str] = None
     split_file_test: Optional[str] = None
     test_split_ratio: float = 0.1
@@ -85,7 +87,8 @@ class DataConfig:
     preload_chunks: bool = True       # Preload all chunks at startup
     
     # Quick testing configuration
-    quick_test_run: bool = False      # If True, use only 5% of data for quick error detection
+    quick_test_run: bool = False      # If True, use only subset of data for quick error detection
+    quick_test_fraction: float = 0.05 # Fraction of data to use for quick test runs (default 5%)
     
     # For backward compatibility with old split format
     use_legacy_splits: bool = False

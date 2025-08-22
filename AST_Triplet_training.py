@@ -72,7 +72,7 @@ class CleanLoggingCallback(TrainerCallback):
         # Remove unwanted fields completely
         unwanted_fields = [
             'grad_norm', 'eval_runtime', 'eval_samples_per_second', 
-            'eval_steps_per_second', 'train_runtime', 'train_samples_per_second',
+            'eval_steps_per_second', 'train_samples_per_second',
             'train_steps_per_second', 'total_flos', 'train_steps_per_second'
         ]
         

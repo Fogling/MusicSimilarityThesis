@@ -528,7 +528,7 @@ class ClusterFeatureCache:
                 self.cache[filepath] = features
                 self.current_size_bytes += feature_size
                 self.access_count[filepath] += 1
-                logger.debug(f"Cached {filepath} ({feature_size/1024/1024:.1f}MB)")
+                # Cached feature successfully
             else:
                 logger.warning(f"Cache full, cannot cache {filepath}")
         
@@ -690,14 +690,12 @@ class DirectWAVTripletDataset(TorchDataset):
     
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Get triplet with on-the-fly audio processing."""
-        logger.debug(f"Dataset __getitem__ called with idx: {idx}, dataset size: {len(self.triplets)}")
         
         if idx >= len(self.triplets):
             raise IndexError(f"Index {idx} out of range for dataset size {len(self.triplets)}")
         
         try:
             anchor_path, positive_path, negative_path, subgenre = self.triplets[idx]
-            logger.debug(f"Processing triplet {idx}: {anchor_path[:50]}...")
             
             # Process audio files with error handling
             anchor_input = self._process_audio_file(anchor_path)
@@ -712,7 +710,6 @@ class DirectWAVTripletDataset(TorchDataset):
                 "subgenre": subgenre
             }
             
-            logger.debug(f"Successfully created triplet item {idx} with keys: {list(result.keys())}")
             return result
             
         except Exception as e:
@@ -728,14 +725,6 @@ def safe_collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     if not batch:
         raise ValueError("Empty batch provided to collate_fn")
     
-    # Debug: Print actual keys in batch to understand the structure
-    if len(batch) > 0:
-        logger.debug(f"Batch keys: {list(batch[0].keys())}")
-        for key in ['anchor_input', 'positive_input', 'negative_input']:
-            if key in batch[0]:
-                logger.debug(f"{key} type: {type(batch[0][key])}")
-                if isinstance(batch[0][key], dict):
-                    logger.debug(f"{key} inner keys: {list(batch[0][key].keys())}")
     
     def stack_tensors_safely(key: str) -> torch.Tensor:
         """Stack tensors with validation."""
@@ -1079,11 +1068,15 @@ def generate_wav_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
     logger.info("Generating test triplets from test tracks...")
     test_triplets = _generate_triplets_from_wav_tracks(test_tracks, "test", config)
     
-    # Quick test run: use only 5% of data for rapid error detection
+    # Quick test run: use configurable fraction of data for rapid error detection
     if config.data.quick_test_run:
-        logger.info("🧪 QUICK TEST MODE: Using only 5% of data for rapid error detection")
-        train_sample_size = max(10, len(train_triplets) // 20)  # 5% or minimum 10
-        test_sample_size = max(5, len(test_triplets) // 20)     # 5% or minimum 5
+        fraction = getattr(config.data, 'quick_test_fraction', 0.05)
+        percentage = int(fraction * 100)
+        logger.info(f"🧪 QUICK TEST MODE: Using only {percentage}% of data for rapid error detection")
+        
+        fraction_divisor = int(1 / fraction)
+        train_sample_size = max(10, len(train_triplets) // fraction_divisor)  # configurable % or minimum 10
+        test_sample_size = max(5, len(test_triplets) // fraction_divisor)     # configurable % or minimum 5
         
         train_triplets = train_triplets[:train_sample_size]
         test_triplets = test_triplets[:test_sample_size]
@@ -1184,86 +1177,6 @@ def _generate_triplets_from_wav_tracks(subgenre_tracks: Dict[str, Dict[str, List
     return all_triplets
 
 
-def estimate_total_ram_requirements(config: ExperimentConfig, num_train_tracks: int, 
-                                   num_test_tracks: int, gpu_count: int = 1) -> Dict[str, float]:
-    """
-    Comprehensive RAM estimation for full training run on cluster.
-    Returns generous estimates (better too high than too low).
-    
-    Args:
-        config: Experiment configuration
-        num_train_tracks: Number of training tracks
-        num_test_tracks: Number of test tracks
-        
-    Returns:
-        Dictionary with RAM estimates in GB
-    """
-    
-    # Base memory per track (AST features: 1024 x 768 x 4 bytes per chunk, 3 chunks per track)
-    ast_features_per_track_mb = (1024 * 768 * 4 * 3) / (1024 * 1024)  # ~9.3 MB per track
-    
-    # Dataset caching
-    train_cache_gb = (num_train_tracks * ast_features_per_track_mb) / 1024
-    test_cache_gb = (num_test_tracks * ast_features_per_track_mb) / 1024
-    total_dataset_cache_gb = train_cache_gb + test_cache_gb
-    
-    # Model memory (AST + projection head) - multiplied by GPU count for DataParallel
-    # AST model: ~87M parameters, projection head: ~1M parameters 
-    model_params = 88_000_000  # Conservative estimate
-    model_memory_gb = (model_params * 4 * 2 * gpu_count) / (1024**3)  # 4 bytes per param, 2x for gradients, Nx for GPUs
-    
-    # Training batch memory (worst case scenario)
-    batch_size = config.training.batch_size
-    gradient_accumulation = config.training.gradient_accumulation_steps
-    effective_batch_size = batch_size * gradient_accumulation
-    
-    # Memory per batch item: 3 triplet members × AST features + intermediate activations
-    batch_item_memory_mb = 3 * ast_features_per_track_mb * 2  # 2x for intermediate activations
-    batch_memory_gb = (effective_batch_size * batch_item_memory_mb) / 1024
-    
-    # Optimizer state (AdamW: 2x model params for momentum + variance)
-    optimizer_memory_gb = model_memory_gb * 2
-    
-    # PyTorch overhead and caching
-    pytorch_overhead_gb = 2.0  # Conservative estimate for PyTorch internal caching
-    
-    # HuggingFace Trainer overhead
-    trainer_overhead_gb = 1.0  # Logging, checkpointing, etc.
-    
-    # Operating system and other processes
-    system_overhead_gb = 4.0  # OS, monitoring, etc.
-    
-    # CUDA context and kernels (if using GPU)
-    cuda_overhead_gb = 2.0 if torch.cuda.is_available() else 0.0
-    
-    # Feature extraction overhead during preloading
-    feature_extraction_overhead_gb = 1.0  # Temporary buffers during preprocessing
-    
-    # Safety margin (25% of total)
-    base_total = (total_dataset_cache_gb + model_memory_gb + batch_memory_gb + 
-                 optimizer_memory_gb + pytorch_overhead_gb + trainer_overhead_gb + 
-                 system_overhead_gb + cuda_overhead_gb + feature_extraction_overhead_gb)
-    
-    safety_margin_gb = base_total * 0.25
-    
-    total_estimated_gb = base_total + safety_margin_gb
-    
-    return {
-        "dataset_cache": total_dataset_cache_gb,
-        "train_cache": train_cache_gb,
-        "test_cache": test_cache_gb,
-        "model_memory": model_memory_gb,
-        "batch_memory": batch_memory_gb,
-        "optimizer_memory": optimizer_memory_gb,
-        "pytorch_overhead": pytorch_overhead_gb,
-        "trainer_overhead": trainer_overhead_gb,
-        "system_overhead": system_overhead_gb,
-        "cuda_overhead": cuda_overhead_gb,
-        "feature_extraction_overhead": feature_extraction_overhead_gb,
-        "safety_margin": safety_margin_gb,
-        "total_estimated": total_estimated_gb,
-        "recommended_request": max(total_estimated_gb * 1.1, 32.0)  # At least 32GB, 10% extra buffer
-    }
 
 
 def save_model_and_artifacts(model: ImprovedASTTripletWrapper, config: ExperimentConfig,
@@ -1308,6 +1221,9 @@ def main():
     parser.add_argument("--config", type=str, help="Path to configuration file")
     parser.add_argument("--test-run", action="store_true", help="Run quick test with minimal data")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
+
+    os.environ["OMP_NUM_THREADS"] = "1"
+    torch.set_num_threads(1)
     
     args = parser.parse_args()
     
@@ -1318,6 +1234,7 @@ def main():
         # Load configuration
         logger.info("Loading configuration...")
         config = load_or_create_config(args.config, test_run=args.test_run)
+        
         
         # Enable debug logging for quick test runs
         if hasattr(config.data, 'quick_test_run') and config.data.quick_test_run:
@@ -1339,25 +1256,9 @@ def main():
         logger.info("Loading data splits...")
         train_data, test_data = load_split_data(config)
         
-        # Estimate RAM requirements based on actual data and GPU setup
-        num_train_tracks = len(set(triplet[0] for triplet in train_data))  # Count unique anchor files
+        # Count dataset size for cache initialization
+        num_train_tracks = len(set(triplet[0] for triplet in train_data))  
         num_test_tracks = len(set(triplet[0] for triplet in test_data))
-        expected_gpu_count = max(1, torch.cuda.device_count()) if torch.cuda.is_available() else 1
-        
-        ram_estimates = estimate_total_ram_requirements(config, num_train_tracks, num_test_tracks, expected_gpu_count)
-        
-        logger.info("🧠 CLUSTER RAM REQUIREMENTS ESTIMATION:")
-        logger.info(f"  Dataset cache: {ram_estimates['dataset_cache']:.1f}GB")
-        logger.info(f"    - Train cache: {ram_estimates['train_cache']:.1f}GB ({num_train_tracks} tracks)")
-        logger.info(f"    - Test cache: {ram_estimates['test_cache']:.1f}GB ({num_test_tracks} tracks)")
-        logger.info(f"  Model + gradients: {ram_estimates['model_memory']:.1f}GB")
-        logger.info(f"  Batch processing: {ram_estimates['batch_memory']:.1f}GB")
-        logger.info(f"  Optimizer state: {ram_estimates['optimizer_memory']:.1f}GB")
-        logger.info(f"  System overhead: {ram_estimates['system_overhead']:.1f}GB")
-        logger.info(f"  Safety margin: {ram_estimates['safety_margin']:.1f}GB")
-        logger.info(f"  📊 TOTAL ESTIMATED: {ram_estimates['total_estimated']:.1f}GB")
-        logger.info(f"  🎯 RECOMMENDED REQUEST: {ram_estimates['recommended_request']:.0f}GB")
-        logger.info("")
         
         # Save splits immediately to preserve split information
         logger.info("Saving train/test splits...")
@@ -1447,9 +1348,11 @@ def main():
             "num_train_epochs": config.training.epochs,
             "weight_decay": config.training.weight_decay,
             "warmup_ratio": config.training.warmup_ratio,
-            "logging_steps": config.training.logging_steps,
+            "logging_steps": config.training.logging_steps, 
             "dataloader_num_workers": config.training.num_workers,
             "dataloader_pin_memory": config.training.pin_memory,
+            "dataloader_prefetch_factor" : config.training.prefetch_factor,
+            "dataloader_persistent_workers" : config.training.persistent_workers,
             "report_to": "none",  # Disable wandb/tensorboard
             "logging_first_step": False,  # Don't log first step
             "disable_tqdm": True,  # No Progress bars
