@@ -10,11 +10,11 @@
         "output_dim": 128
     },
     "training": {
-        "batch_size": 12,
+        "batch_size": 24,
         "epochs": 15,
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
-        "gradient_accumulation_steps": 4,
+        "gradient_accumulation_steps": 2,
         "warmup_ratio": 0.1,
         "triplet_margin": 0.5,
         "num_workers": 12,
@@ -40,7 +40,7 @@
         "chunks_dir": "precomputed_AST",
         "test_split_ratio": 0.15,
         "min_files_per_genre": 2,
-        "max_positive_tracks": 8,
+        "max_positive_tracks": 6,
         "triplets_per_positive_track": 1,
         "resample_each_epoch": true,
         "negative_mining": "semi_hard"

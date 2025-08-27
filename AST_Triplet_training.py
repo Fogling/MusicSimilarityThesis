@@ -70,7 +70,17 @@ class CleanLoggingCallback(TrainerCallback):
     
     def on_train_begin(self, args, state, control, **kwargs):
         """Called at the beginning of training to capture total steps."""
-        if state.max_steps and state.max_steps > 0:
+        # Calculate total steps from epochs and batch size since max_steps might not be set
+        if args.num_train_epochs and args.per_device_train_batch_size:
+            # Get dataset size from kwargs if available
+            train_dataset = kwargs.get('train_dataset')
+            if train_dataset and hasattr(train_dataset, '__len__'):
+                total_train_samples = len(train_dataset)
+                effective_batch_size = args.per_device_train_batch_size * args.gradient_accumulation_steps
+                steps_per_epoch = (total_train_samples + effective_batch_size - 1) // effective_batch_size
+                self.total_steps = steps_per_epoch * args.num_train_epochs
+                logger.info(f"Training will run for {self.total_steps} total steps ({steps_per_epoch} steps/epoch × {args.num_train_epochs} epochs)")
+        elif state.max_steps and state.max_steps > 0:
             self.total_steps = state.max_steps
             logger.info(f"Training will run for {self.total_steps} total steps")
     
@@ -97,6 +107,14 @@ class CleanLoggingCallback(TrainerCallback):
                            f"eval_loss={logs['eval_loss']:.4f}, "
                            f"eval_accuracy={logs.get('eval_accuracy', 0):.3f}")
                 self.last_logged_epoch = current_epoch
+                
+                # Remove clutter metrics to prevent HuggingFace from logging the full dict
+                metrics_to_remove = [
+                    'eval_runtime', 'eval_samples_per_second', 'eval_steps_per_second',
+                    'eval_model_preparation_time'
+                ]
+                for metric in metrics_to_remove:
+                    logs.pop(metric, None)
 
 class ResampleCallback(TrainerCallback):
     """
@@ -108,7 +126,13 @@ class ResampleCallback(TrainerCallback):
         self.enabled = bool(enabled)
 
     def on_epoch_begin(self, args, state, control, **kwargs):
-        if self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch"):
+        # Only resample during actual training epochs, not during evaluation
+        # Check if we're in evaluation mode by looking for evaluation context
+        model = kwargs.get('model')
+        is_evaluation_phase = (model is not None and not model.training) if model else False
+        
+        if (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch") and 
+            not is_evaluation_phase):
             try:
                 self.train_dataset.resample_for_new_epoch()
                 logger.info(f"[ResampleCallback] Regenerated triplets for epoch {int(state.epoch)+1}")
