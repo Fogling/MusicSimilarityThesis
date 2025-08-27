@@ -261,7 +261,11 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         """Eagerly load all unique .pt files into the LRU cache at startup."""
         paths = self._unique_paths()
         logger.info(f"Preloading {len(paths)} unique chunk files for split '{self.split_name}'...")
-        for path in tqdm(paths, desc=f"Preloading {self.split_name}"):
+        
+        # Use tqdm conditionally based on config
+        iterator = tqdm(paths, desc=f"Preloading {self.split_name}") if not self.config.training.disable_tqdm else paths
+        
+        for path in iterator:
             try:
                 if self.file_cache.get(path) is None:
                     tensor_dict = torch.load(path, map_location='cpu', weights_only=True)
@@ -1025,7 +1029,7 @@ def main():
             "dataloader_persistent_workers": config.training.persistent_workers,
             "report_to": "none",  # Disable wandb/tensorboard
             "logging_first_step": True,  # Don't log first step
-            "disable_tqdm": False,  # Enable tqdm progress bars
+            "disable_tqdm": config.training.disable_tqdm,  # Control tqdm progress bars
             "log_level": "warning",  # Reduce HF Trainer's internal logging
             "seed": config.training.seed,
             "data_seed": config.training.seed,
@@ -1058,6 +1062,14 @@ def main():
             compute_metrics=compute_metrics,
             callbacks=[CleanLoggingCallback()],
         )
+        
+        # Perform initial evaluation to get baseline accuracy
+        logger.info("Performing initial evaluation to establish baseline...")
+        try:
+            initial_metrics = trainer.evaluate()
+            logger.info(f"Baseline evaluation results: {initial_metrics}")
+        except Exception as e:
+            logger.warning(f"Initial evaluation failed: {e}")
         
         # Start training
         logger.info("Starting training...")

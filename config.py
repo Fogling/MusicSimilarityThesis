@@ -51,6 +51,9 @@ class TrainingConfig:
     # Reproducibility
     seed: int = 42
     
+    # Progress bars
+    disable_tqdm: bool = True  # Disable tqdm progress bars (useful for cluster/batch jobs)
+    
     # GPU configuration
     force_single_gpu: bool = False  # Force single GPU mode even with multiple GPUs available
 
