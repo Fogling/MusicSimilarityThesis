@@ -81,7 +81,8 @@ class CleanLoggingCallback(TrainerCallback):
             
         # Only customize evaluation logging - let HuggingFace handle training logs
         if 'eval_loss' in logs:
-            current_step = logs.get('step', 0)
+            # Use state.global_step instead of logs['step'] for accurate step count
+            current_step = state.global_step if state else logs.get('step', 0)
             current_epoch = logs.get('epoch', 0)
             
             # Only log evaluation once per epoch to avoid duplicates
@@ -213,9 +214,11 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         if self._resample_enabled and split_name == "train":
             self.resample_for_new_epoch()
 
+        # Show actual resampling behavior, not just config flag
+        actually_resampling = self._resample_enabled and split_name == "train"
         logger.info(
             f"Initialized dataset ({split_name}) with {len(self.triplets_active)} triplets "
-            f"(resample_each_epoch={self._resample_enabled})"
+            f"(resample_each_epoch={actually_resampling})"
         )
 
     def _parse_split_data(self, split_data: Union[List, Dict]) -> List[Tuple[str, str, str, str]]:
@@ -360,8 +363,8 @@ class ImprovedTripletFeatureDataset(TorchDataset):
     
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Get triplet with comprehensive validation."""
-        if idx >= len(self.triplets):
-            raise IndexError(f"Index {idx} out of range for dataset size {len(self.triplets)}")
+        if idx >= len(self.triplets_active):
+            raise IndexError(f"Index {idx} out of range for dataset size {len(self.triplets_active)}")
         
         try:
             anchor_path, positive_path, negative_path, subgenre = self.triplets_active[idx]
@@ -668,7 +671,8 @@ class ImprovedASTTripletWrapper(nn.Module):
             #    We only attempt mining if:
             #      - config sets negative_mining to "semi_hard" or "hard"
             #      - the collator passed subgenre labels for this batch
-            if self.negative_mining in {"semi_hard", "hard"} and subgenre is not None:
+            #      - we're in training mode (not evaluation)
+            if self.negative_mining in {"semi_hard", "hard"} and subgenre is not None and self.training:
                 try:
                     mined = self._mine_within_batch(emb_anchor, emb_positive, subgenre)
                     # mined is a tuple (d_ap, d_an) or (None, None) if mining couldn't run

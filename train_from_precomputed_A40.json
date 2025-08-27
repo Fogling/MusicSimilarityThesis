@@ -22,7 +22,7 @@
         "prefetch_factor": 8,
         "persistent_workers": true,
         "eval_strategy": "epoch",
-        "save_strategy": "steps",
+        "save_strategy": "no",
         "logging_steps": 500,
         "save_steps": 1000,
         "eval_steps": 500,
