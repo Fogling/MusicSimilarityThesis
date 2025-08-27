@@ -34,11 +34,6 @@
     "min_files_per_genre": 2,
     "max_positive_tracks": 12,
     "triplets_per_positive_track": 3,
-    "enable_feature_caching": true,
-    "cache_train_dataset": true,
-    "cache_test_dataset": true,
-    "max_cache_size_gb": 16.0,
-    "preload_chunks": true,
     "use_legacy_splits": false,
     "legacy_split_dir": null
   },

@@ -92,12 +92,6 @@ class DataConfig:
     max_positive_tracks: int = 12  # Maximum positive tracks per anchor (balanced for clusters)
     triplets_per_positive_track: int = 2  # Triplets per positive track (prevents overfitting)
     
-    # Caching configuration for cluster environments
-    enable_feature_caching: bool = True  # Enable aggressive feature caching
-    cache_train_dataset: bool = True  # Cache entire training dataset
-    cache_test_dataset: bool = True   # Cache entire test dataset
-    max_cache_size_gb: float = 16.0   # Maximum cache size in GB (safety limit)
-    preload_chunks: bool = True       # Preload all chunks at startup
     
     # Quick testing configuration
     quick_test_run: bool = False      # If True, use only subset of data for quick error detection

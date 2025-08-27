@@ -32,8 +32,6 @@ from transformers import ASTModel, TrainingArguments, Trainer, TrainerCallback
 from safetensors.torch import save_file, load_file
 from tqdm import tqdm
 from dataclasses import dataclass
-import threading
-from collections import OrderedDict
 
 from config import ExperimentConfig, load_or_create_config
 
@@ -68,41 +66,33 @@ class CleanLoggingCallback(TrainerCallback):
     def __init__(self):
         self.last_logged_step = -1
         self.last_logged_epoch = -1
+        self.total_steps = None
+    
+    def on_train_begin(self, args, state, control, **kwargs):
+        """Called at the beginning of training to capture total steps."""
+        if state.max_steps and state.max_steps > 0:
+            self.total_steps = state.max_steps
+            logger.info(f"Training will run for {self.total_steps} total steps")
     
     def on_log(self, args, state, control, logs=None, **kwargs):
-        """Called whenever logging occurs - filters and formats logs cleanly."""
+        """Called whenever logging occurs - only customize evaluation logs."""
         if logs is None:
             return
             
-        # Remove unwanted fields completely
-        unwanted_fields = [
-            'grad_norm', 'eval_runtime', 'eval_samples_per_second', 
-            'eval_steps_per_second', 'train_samples_per_second',
-            'train_steps_per_second', 'total_flos', 'train_steps_per_second'
-        ]
-        
-        for field in unwanted_fields:
-            logs.pop(field, None)
-        
-        # No fake train_accuracy calculation - only real eval_accuracy matters
-        
-        # Only log meaningful progress updates (avoid duplicates)
-        current_step = logs.get('step', 0)
-        current_epoch = logs.get('epoch', 0)
-        
-        if 'train_loss' in logs and 'eval_loss' not in logs:
-            # Training step - only log every N steps to reduce noise
-            if current_step != self.last_logged_step and current_step % 50 == 0:
-                logger.info(f"Training - Step {current_step}: "
-                           f"loss={logs['train_loss']:.4f}, "
-                           f"lr={logs.get('learning_rate', 0):.2e}")
-                self.last_logged_step = current_step
-                
-        elif 'eval_loss' in logs:
-            # Evaluation step - always log these as they're less frequent
+        # Only customize evaluation logging - let HuggingFace handle training logs
+        if 'eval_loss' in logs:
+            current_step = logs.get('step', 0)
+            current_epoch = logs.get('epoch', 0)
+            
+            # Only log evaluation once per epoch to avoid duplicates
             if current_epoch != self.last_logged_epoch:
-                logger.info(f"Evaluation - Epoch {current_epoch}: "
-                           f"train_loss={logs.get('train_loss', 0):.4f}, "
+                # Format step info with progress if total steps is known
+                if self.total_steps:
+                    step_info = f"Step {current_step}/{self.total_steps} ({current_step/self.total_steps*100:.1f}%)"
+                else:
+                    step_info = f"Step {current_step}"
+                
+                logger.info(f"Evaluation - Epoch {current_epoch}, {step_info}: "
                            f"eval_loss={logs['eval_loss']:.4f}, "
                            f"eval_accuracy={logs.get('eval_accuracy', 0):.3f}")
                 self.last_logged_epoch = current_epoch
@@ -183,47 +173,10 @@ def sanitize_dict_tensor(tensor_dict: Dict[str, Any]) -> Dict[str, torch.Tensor]
     
     return cleaned
 
-class LRUFeatureCache:   # Caching as of right now resulted in zero change to training speed, therefore its not in use
-    """
-    Simple LRU cache for .pt feature files with an approximate size limit (GB).
-    Uses file sizes to track capacity (fast + safe).
-    """
-    def __init__(self, max_gb: float):
-        self.max_bytes = int(max_gb * (1024 ** 3))
-        self.cur_bytes = 0
-        self.data: "OrderedDict[str, Dict[str, torch.Tensor]]" = OrderedDict()
-        self.lock = threading.Lock()
-
-    def _file_size(self, path: str) -> int:
-        try:
-            return os.path.getsize(path)
-        except Exception:
-            return 0
-
-    def get(self, path: str):
-        with self.lock:
-            v = self.data.get(path)
-            if v is not None:
-                self.data.move_to_end(path, last=True)
-            return v
-
-    def put(self, path: str, value: Dict[str, torch.Tensor]):
-        size = self._file_size(path)
-        with self.lock:
-            # If already there, refresh position only
-            if path in self.data:
-                self.data.move_to_end(path, last=True)
-                return
-            self.data[path] = value
-            self.cur_bytes += size
-            # Evict LRU until under budget
-            while self.cur_bytes > self.max_bytes and len(self.data) > 1:
-                old_path, _ = self.data.popitem(last=False)
-                self.cur_bytes -= self._file_size(old_path)
 
 class ImprovedTripletFeatureDataset(TorchDataset):
     """
-    Improved triplet dataset with proper error handling, validation, and caching.
+    Improved triplet dataset with proper error handling and validation.
     """
     
     def __init__(self, split_data: Union[List, Dict], config: ExperimentConfig, split_name: str = "train"):
@@ -231,49 +184,8 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         self.split_name = split_name
         self.triplets = self._parse_split_data(split_data)
 
-        # Decide whether to cache and/or preload from config flags
-        use_cache = (
-            self.config.data.enable_feature_caching and
-            ((split_name == "train" and self.config.data.cache_train_dataset) or
-            (split_name == "test" and self.config.data.cache_test_dataset))
-        )
-
-        self.file_cache = LRUFeatureCache(self.config.data.max_cache_size_gb) if use_cache else None
-        self._all_paths: Optional[List[str]] = None
-
         logger.info(f"Initialized dataset ({split_name}) with {len(self.triplets)} triplets")
-        logger.info(f"Caching: {'enabled' if self.file_cache is not None else 'disabled'} "
-                    f"(max ~{self.config.data.max_cache_size_gb} GB)")
-        # Optional: preload
-        if self.file_cache is not None and self.config.data.preload_chunks:
-            self._preload_all_features()
-    
-    def _unique_paths(self) -> List[str]:
-        if self._all_paths is not None:
-            return self._all_paths
-        paths = set()
-        for a, p, n, _ in self.triplets:
-            paths.add(a); paths.add(p); paths.add(n)
-        self._all_paths = sorted(paths)
-        return self._all_paths
 
-    def _preload_all_features(self) -> None:
-        """Eagerly load all unique .pt files into the LRU cache at startup."""
-        paths = self._unique_paths()
-        logger.info(f"Preloading {len(paths)} unique chunk files for split '{self.split_name}'...")
-        
-        # Use tqdm conditionally based on config
-        iterator = tqdm(paths, desc=f"Preloading {self.split_name}") if not self.config.training.disable_tqdm else paths
-        
-        for path in iterator:
-            try:
-                if self.file_cache.get(path) is None:
-                    tensor_dict = torch.load(path, map_location='cpu', weights_only=True)
-                    cleaned = sanitize_dict_tensor(tensor_dict)
-                    self.file_cache.put(path, cleaned)
-            except Exception as e:
-                logger.warning(f"Preload failed for {path}: {e}")
-    
     def _parse_split_data(self, split_data: Union[List, Dict]) -> List[Tuple[str, str, str, str]]:
         """Parse split data from either legacy or new format."""
         if isinstance(split_data, list):
@@ -302,22 +214,11 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Tensor file not found: {filepath}")
 
-        # 1) cache hit?
-        if self.file_cache is not None:
-            cached = self.file_cache.get(filepath)
-            if cached is not None:
-                return cached
-
         try:
             tensor_dict = torch.load(filepath, map_location='cpu', weights_only=True)
             if not isinstance(tensor_dict, dict):
                 raise TripletValidationError(f"Expected dict from {filepath}, got {type(tensor_dict)}")
             cleaned = sanitize_dict_tensor(tensor_dict)
-
-            # 2) store in cache
-            if self.file_cache is not None:
-                self.file_cache.put(filepath, cleaned)
-
             return cleaned
         except Exception as e:
             logger.error(f"Error loading {filepath}: {e}")
@@ -602,6 +503,12 @@ class ImprovedASTTripletWrapper(nn.Module):
             # Triplet loss
             triplet_loss = torch.clamp(dist_ap - dist_an + self.triplet_margin, min=0.0)
             loss = triplet_loss.mean()
+            
+            # Debug: Log loss computation details occasionally
+            if torch.rand(1).item() < 0.01:  # Log ~1% of the time
+                logger.debug(f"Loss computation - AP dist: {dist_ap.mean():.4f}, "
+                            f"AN dist: {dist_an.mean():.4f}, "
+                            f"Triplet loss: {loss.item():.4f}")
             
             # Create logits for compatibility with Trainer
             # Stack distances as [dist_ap, dist_an] for each sample
@@ -1028,7 +935,7 @@ def main():
             "dataloader_prefetch_factor": config.training.prefetch_factor,
             "dataloader_persistent_workers": config.training.persistent_workers,
             "report_to": "none",  # Disable wandb/tensorboard
-            "logging_first_step": True,  # Don't log first step
+            "logging_first_step": False,  # Don't log first step
             "disable_tqdm": config.training.disable_tqdm,  # Control tqdm progress bars
             "log_level": "warning",  # Reduce HF Trainer's internal logging
             "seed": config.training.seed,
@@ -1063,11 +970,27 @@ def main():
             callbacks=[CleanLoggingCallback()],
         )
         
+        # Log training setup information
+        total_train_samples = len(train_dataset)
+        total_test_samples = len(test_dataset)
+        effective_batch_size = config.training.batch_size * config.training.gradient_accumulation_steps
+        steps_per_epoch = (total_train_samples + effective_batch_size - 1) // effective_batch_size
+        total_steps = steps_per_epoch * config.training.epochs
+        
+        logger.info(f"Training setup:")
+        logger.info(f"  - Train samples: {total_train_samples}")
+        logger.info(f"  - Test samples: {total_test_samples}")
+        logger.info(f"  - Batch size: {config.training.batch_size}")
+        logger.info(f"  - Gradient accumulation: {config.training.gradient_accumulation_steps}")
+        logger.info(f"  - Effective batch size: {effective_batch_size}")
+        logger.info(f"  - Steps per epoch: {steps_per_epoch}")
+        logger.info(f"  - Total epochs: {config.training.epochs}")
+        logger.info(f"  - Estimated total steps: {total_steps}")
+        
         # Perform initial evaluation to get baseline accuracy
         logger.info("Performing initial evaluation to establish baseline...")
         try:
             initial_metrics = trainer.evaluate()
-            logger.info(f"Baseline evaluation results: {initial_metrics}")
         except Exception as e:
             logger.warning(f"Initial evaluation failed: {e}")
         

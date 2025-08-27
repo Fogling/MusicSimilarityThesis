@@ -34,11 +34,6 @@
         "min_files_per_genre": 2,
         "max_positive_tracks": 4,
         "triplets_per_positive_track": 2,
-        "enable_feature_caching": false,
-        "cache_train_dataset": false,
-        "cache_test_dataset": false,
-        "max_cache_size_gb": 1,
-        "preload_chunks": false
     },
     "paths": {
         "model_output_dir": "ast_triplet_output",
