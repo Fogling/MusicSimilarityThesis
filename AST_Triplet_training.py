@@ -97,6 +97,24 @@ class CleanLoggingCallback(TrainerCallback):
                            f"eval_accuracy={logs.get('eval_accuracy', 0):.3f}")
                 self.last_logged_epoch = current_epoch
 
+class ResampleCallback(TrainerCallback):
+    """
+    When enabled via config (data.resample_each_epoch == True), this callback
+    asks the train dataset to regenerate its triplets at the start of each epoch.
+    """
+    def __init__(self, train_dataset, enabled: bool):
+        self.train_dataset = train_dataset
+        self.enabled = bool(enabled)
+
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        if self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch"):
+            try:
+                self.train_dataset.resample_for_new_epoch()
+                logger.info(f"[ResampleCallback] Regenerated triplets for epoch {int(state.epoch)+1}")
+            except Exception as e:
+                print(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
+                logger.warning(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
+
 # ========== UTILITY FUNCTIONS ==========
 
 def set_random_seeds(seed: int) -> None:
@@ -182,9 +200,23 @@ class ImprovedTripletFeatureDataset(TorchDataset):
     def __init__(self, split_data: Union[List, Dict], config: ExperimentConfig, split_name: str = "train"):
         self.config = config
         self.split_name = split_name
-        self.triplets = self._parse_split_data(split_data)
 
-        logger.info(f"Initialized dataset ({split_name}) with {len(self.triplets)} triplets")
+        # always keep an immutable copy of original triplets
+        self.triplets_original = self._parse_split_data(split_data)
+        self.triplets_active = list(self.triplets_original)
+
+        # resampling flag (defaults to False if not present)
+        self._resample_enabled = bool(getattr(self.config.data, "resample_each_epoch", False))
+
+        # build indices that allow resampling (subgenre -> track -> chunks)
+        self._build_indices_from_triplets(self.triplets_original)
+        if self._resample_enabled and split_name == "train":
+            self.resample_for_new_epoch()
+
+        logger.info(
+            f"Initialized dataset ({split_name}) with {len(self.triplets_active)} triplets "
+            f"(resample_each_epoch={self._resample_enabled})"
+        )
 
     def _parse_split_data(self, split_data: Union[List, Dict]) -> List[Tuple[str, str, str, str]]:
         """Parse split data from either legacy or new format."""
@@ -210,6 +242,105 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         else:
             raise ValueError(f"Unsupported split data format: {type(split_data)}")
     
+    def _track_name_from_path(self, p: str) -> str:
+        """
+        Extracts the track name (without chunk suffix) from a chunk filepath.
+
+        Example:
+        ".../techno/track123_chunk0.pt" -> "track123"
+        """
+        return Path(p).stem.rsplit("_chunk", 1)[0]
+
+
+    def _build_indices_from_triplets(self, triplets):
+        """
+        Build lookup indices from the original triplets. These indices are used
+        later to resample new triplets each epoch.
+
+        Creates:
+        - self.sg_to_track_chunks: {subgenre -> {track_name -> [chunk_paths]}}
+        - self.sg_all_chunks: {subgenre -> [all chunk_paths]}
+        - self.unique_anchors: list of unique (anchor_path, subgenre) pairs
+        - self.neg_pool_by_sg: {subgenre -> [all chunks from other subgenres]}
+        """
+        from collections import defaultdict
+
+        self.sg_to_track_chunks = defaultdict(lambda: defaultdict(list))
+        self.sg_all_chunks = defaultdict(list)
+
+        # Fill indices from all paths found in the triplets
+        for a, p, n, sg in triplets:
+            for path in (a, p, n):
+                self.sg_to_track_chunks[sg][self._track_name_from_path(path)].append(path)
+                self.sg_all_chunks[sg].append(path)
+
+        # Deduplicate chunk lists
+        for sg in list(self.sg_to_track_chunks.keys()):
+            for t in list(self.sg_to_track_chunks[sg].keys()):
+                self.sg_to_track_chunks[sg][t] = sorted(set(self.sg_to_track_chunks[sg][t]))
+            self.sg_all_chunks[sg] = sorted(set(self.sg_all_chunks[sg]))
+
+        # Store one entry per unique anchor (so we can regenerate positives/negatives later)
+        self.unique_anchors = []
+        seen = set()
+        for a, _p, _n, sg in triplets:
+            if a not in seen:
+                seen.add(a)
+                self.unique_anchors.append((a, sg))
+
+        # For each subgenre, prepare a pool of negatives = all chunks from other subgenres
+        self.neg_pool_by_sg = {}
+        all_sg = list(self.sg_to_track_chunks.keys())
+        for sg in all_sg:
+            pool = []
+            for other in all_sg:
+                if other != sg:
+                    pool.extend(self.sg_all_chunks[other])
+            self.neg_pool_by_sg[sg] = pool
+
+
+    def resample_for_new_epoch(self):
+        """
+        Generate a fresh set of triplets for the new epoch.
+
+        For each stored anchor:
+        - Sample a positive from a *different* track in the same subgenre.
+        - Sample a negative from any other subgenre.
+        - Fall back gracefully if only one track exists in the subgenre.
+
+        The resulting triplets are stored in self.triplets_active and used
+        during this epoch.
+        """
+        new_triplets = []
+        rng = random.Random(random.randint(0, 2**31 - 1))
+
+        for anchor_path, sg in self.unique_anchors:
+            anchor_track = self._track_name_from_path(anchor_path)
+
+            # Choose a positive chunk from a different track in the same subgenre
+            candidate_tracks = [t for t in self.sg_to_track_chunks[sg].keys() if t != anchor_track]
+            if candidate_tracks:
+                t = rng.choice(candidate_tracks)
+                pos_path = rng.choice(self.sg_to_track_chunks[sg][t])
+            else:
+                # fallback: reuse any positive from the original triplets for this anchor
+                fallback = [p for (a, p, _n, sg_) in self.triplets_original if a == anchor_path and sg_ == sg]
+                if not fallback:
+                    continue
+                pos_path = rng.choice(fallback)
+
+            # Choose a negative chunk from another subgenre
+            neg_pool = self.neg_pool_by_sg.get(sg, [])
+            if not neg_pool:
+                continue
+            neg_path = rng.choice(neg_pool)
+
+            new_triplets.append((anchor_path, pos_path, neg_path, sg))
+
+        rng.shuffle(new_triplets)
+        self.triplets_active = new_triplets
+        logger.info(f"[Dataset] Resampled epoch triplets: {len(self.triplets_active)}")
+    
     def _safe_load_tensor(self, filepath: str) -> Dict[str, torch.Tensor]:
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Tensor file not found: {filepath}")
@@ -225,7 +356,7 @@ class ImprovedTripletFeatureDataset(TorchDataset):
             raise TripletValidationError(f"Failed to load {filepath}: {e}")
     
     def __len__(self) -> int:
-        return len(self.triplets)
+        return len(self.triplets_active)
     
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Get triplet with comprehensive validation."""
@@ -233,7 +364,7 @@ class ImprovedTripletFeatureDataset(TorchDataset):
             raise IndexError(f"Index {idx} out of range for dataset size {len(self.triplets)}")
         
         try:
-            anchor_path, positive_path, negative_path, subgenre = self.triplets[idx]
+            anchor_path, positive_path, negative_path, subgenre = self.triplets_active[idx]
             
             # Load tensors with error handling
             anchor_input = self._safe_load_tensor(anchor_path)
@@ -391,7 +522,8 @@ class FastSafeCollator:
                 "anchor_input":   self._stack_group(batch, "anchor_input",   do_full_validate),
                 "positive_input": self._stack_group(batch, "positive_input", do_full_validate),
                 "negative_input": self._stack_group(batch, "negative_input", do_full_validate),
-                "labels": torch.tensor([item["labels"] for item in batch], dtype=torch.long)
+                "labels": torch.tensor([item["labels"] for item in batch], dtype=torch.long),
+                "subgenre": [item["subgenre"] for item in batch]
             }
             return out
 
@@ -421,9 +553,14 @@ class ImprovedASTTripletWrapper(nn.Module):
         # Build configurable projection head
         self.projector = self._build_projection_head()
         self.triplet_margin = config.training.triplet_margin
-        
+
+        self.negative_mining = str(getattr(self.config.data, "negative_mining", "none")).lower()
+        if self.negative_mining not in {"none", "semi_hard", "hard"}:
+            self.negative_mining = "none"
+
         logger.info(f"Model initialized with projection to {config.model.output_dim}D")
-        logger.info(f"Triplet margin: {self.triplet_margin}")
+        logger.info(f"Triplet margin: {self.triplet_margin} | negative_mining={self.negative_mining}")
+        
     
     def _build_projection_head(self) -> nn.Module:
         """Build configurable projection head."""
@@ -487,50 +624,166 @@ class ImprovedASTTripletWrapper(nn.Module):
             logger.error(f"Error in embed: {e}")
             raise
     
-    def forward(self, anchor_input: Dict, positive_input: Dict, 
-                negative_input: Dict, labels: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
-        """Forward pass with comprehensive error handling."""
+    def forward(
+        self,
+        anchor_input: Dict,
+        positive_input: Dict,
+        negative_input: Dict,
+        labels: Optional[torch.Tensor] = None,
+        subgenre: Optional[List[str]] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Forward pass for triplet learning with optional batch-wise negative mining.
+
+        Behavior:
+        1) Compute anchor/positive/negative embeddings via self.embed(...)
+        2) Compute default distances from dataset-provided triplets
+        3) If mining is enabled and we have per-sample labels (subgenre):
+            - Mine the hardest positive and a semi-hard (or hard) negative
+                within the current batch to replace the defaults.
+            Else:
+            - Fall back to the dataset-provided (a, p, n) distances.
+        4) Compute margin-based triplet loss and return logits for metrics.
+
+        Returns:
+        dict with:
+            - "loss": scalar triplet loss
+            - "logits": [d_ap, d_an] per example (used by compute_metrics)
+            - "distances": detached per-example distances for debugging
+        """
         try:
-            # Generate embeddings
-            emb_anchor = self.embed(anchor_input)
+            # 1) Embeddings
+            emb_anchor = self.embed(anchor_input)   # (B, D), L2-normalized
             emb_positive = self.embed(positive_input)
             emb_negative = self.embed(negative_input)
-            
-            # Compute distances
-            dist_ap = 1 - F.cosine_similarity(emb_anchor, emb_positive, dim=1)
-            dist_an = 1 - F.cosine_similarity(emb_anchor, emb_negative, dim=1)
-            
-            # Triplet loss
+
+            # 2) Default distances from dataset-provided triplets
+            #    cosine distance = 1 - cos_sim  (smaller = more similar)
+            dist_ap_def = 1.0 - F.cosine_similarity(emb_anchor, emb_positive, dim=1)  # (B,)
+            dist_an_def = 1.0 - F.cosine_similarity(emb_anchor, emb_negative, dim=1)  # (B,)
+
+            dist_ap, dist_an = dist_ap_def, dist_an_def
+
+            # 3) Optional batch-wise mining (semi-hard / hard)
+            #    We only attempt mining if:
+            #      - config sets negative_mining to "semi_hard" or "hard"
+            #      - the collator passed subgenre labels for this batch
+            if self.negative_mining in {"semi_hard", "hard"} and subgenre is not None:
+                try:
+                    mined = self._mine_within_batch(emb_anchor, emb_positive, subgenre)
+                    # mined is a tuple (d_ap, d_an) or (None, None) if mining couldn't run
+                    if mined[0] is not None:
+                        dist_ap, dist_an = mined
+                except Exception as e:
+                    # Safe fallback: keep default distances (dataset triplets)
+                    print(f"[Mining] Mining failed, fallback to dataset triplets: {e}")
+                    logger.warning(f"[Mining] Mining failed, fallback to dataset triplets: {e}")
+
+            # 4) Triplet loss with margin
+            #    Enforce: d_an >= d_ap + margin  ->  relu(d_ap - d_an + m)
             triplet_loss = torch.clamp(dist_ap - dist_an + self.triplet_margin, min=0.0)
             loss = triplet_loss.mean()
-            
-            # Debug: Log loss computation details occasionally
-            if torch.rand(1).item() < 0.01:  # Log ~1% of the time
-                logger.debug(f"Loss computation - AP dist: {dist_ap.mean():.4f}, "
-                            f"AN dist: {dist_an.mean():.4f}, "
-                            f"Triplet loss: {loss.item():.4f}")
-            
-            # Create logits for compatibility with Trainer
-            # Stack distances as [dist_ap, dist_an] for each sample
-            logits = torch.stack([dist_ap, dist_an], dim=1)
-            
-            # Ensure logits are finite and well-formed
+
+            # 5) Logits for metric computation (compute_metrics expects [d_ap, d_an])
+            logits = torch.stack([dist_ap, dist_an], dim=1)  # (B, 2)
             if torch.isnan(logits).any() or torch.isinf(logits).any():
-                logger.warning("Invalid logits detected, replacing with zeros")
+                print("[Forward] Invalid logits detected (NaN/Inf); replacing with zeros")
+                logger.warning("[Forward] Invalid logits detected (NaN/Inf); replacing with zeros")
                 logits = torch.zeros_like(logits)
-            
+
             return {
                 "loss": loss,
                 "logits": logits,
                 "distances": {
                     "anchor_positive": dist_ap.detach(),
-                    "anchor_negative": dist_an.detach()
-                }
+                    "anchor_negative": dist_an.detach(),
+                },
             }
-            
+
         except Exception as e:
-            logger.error(f"Forward pass failed: {e}")
+            # Bubble up after emitting both console + logger messages
+            print(f"[Forward] Forward pass failed: {e}")
+            logger.error(f"[Forward] Forward pass failed: {e}")
             raise
+        
+    def _mine_within_batch(self, emb_anchor, emb_positive, labels):
+        """
+        Perform batch-wise mining.
+
+        Inputs:
+        - emb_anchor: (B, D) anchor embeddings
+        - emb_positive: (B, D) positive embeddings (paired with anchors)
+        - labels: list of subgenre strings, length B
+
+        Behavior:
+        - Hardest positive: the positive sample in the batch with the same label
+                            that has the *largest* distance to the anchor.
+        - Semi-hard negative: a negative (different label) that is farther than
+                                the positive but as close as possible.
+        - Hard negative fallback: if no semi-hard exists, use the closest negative.
+
+        Returns:
+        (d_ap, d_an) = per-sample distances (tensor length B),
+        or (None, None) if mining not possible.
+        """
+        if not labels or emb_anchor.size(0) != len(labels):
+            return None, None
+
+        device = emb_anchor.device
+        B = emb_anchor.size(0)
+
+        # Candidate pool = anchors + positives (so we can search across the batch)
+        emb_cand = torch.cat([emb_anchor, emb_positive], dim=0)
+
+        # Convert labels to integers for mask building
+        uniq = {s: i for i, s in enumerate(sorted(set(labels)))}
+        y = torch.tensor([uniq[s] for s in labels], device=device)
+        y_cand = torch.cat([y, y], dim=0)
+
+        # Distance matrix: (B, 2B)
+        sim = torch.matmul(emb_anchor, emb_cand.T).clamp(-1, 1)
+        D = 1.0 - sim
+
+        # Same-class mask
+        same = (y.unsqueeze(1) == y_cand.unsqueeze(0))
+        # Exclude trivial self matches
+        eye = torch.zeros_like(D, dtype=torch.bool)
+        eye[:, :B] = torch.eye(B, device=device, dtype=torch.bool)
+        same = same & (~eye)
+
+        if not same.any():
+            return None, None
+
+        # Hardest positive: max distance among same-class
+        D_pos = D.clone()
+        D_pos[~same] = -float("inf")
+        pos_idx = D_pos.argmax(dim=1)
+        d_ap = D.gather(1, pos_idx.unsqueeze(1)).squeeze(1)
+
+        # Negatives = different-class
+        diff = ~same
+        if self.negative_mining == "semi_hard":
+            # Semi-hard negatives: farther than positive but as close as possible
+            mask = diff & (D > d_ap.unsqueeze(1))
+            D_neg = D.clone()
+            D_neg[~mask] = float("inf")
+            neg_idx = D_neg.argmin(dim=1)
+            no_semi = torch.isinf(D_neg.gather(1, neg_idx.unsqueeze(1)).squeeze(1))
+            if no_semi.any():
+                # Fallback: hard negatives (closest overall)
+                D_hard = D.clone()
+                D_hard[~diff] = float("inf")
+                hard_idx = D_hard.argmin(dim=1)
+                neg_idx = torch.where(no_semi, hard_idx, neg_idx)
+        else:
+            # Hard negatives directly
+            D_hard = D.clone()
+            D_hard[~diff] = float("inf")
+            neg_idx = D_hard.argmin(dim=1)
+
+        d_an = D.gather(1, neg_idx.unsqueeze(1)).squeeze(1)
+
+        return d_ap, d_an
 
 
 def compute_metrics(eval_pred) -> Dict[str, float]:
@@ -694,6 +947,7 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
     logger.info(f"Total: {len(train_triplets)} train triplets, {len(test_triplets)} test triplets")
     
     return train_triplets, test_triplets
+
 
 
 def _generate_triplets_from_tracks(subgenre_tracks: Dict[str, Dict[str, List[str]]], 
@@ -959,6 +1213,9 @@ def main():
         
         training_args = TrainingArguments(**training_args_dict)
         
+        resample_flag = bool(getattr(config.data, "resample_each_epoch", False))
+        callbacks = [CleanLoggingCallback(), ResampleCallback(train_dataset, enabled=resample_flag)]
+
         # Initialize trainer with custom callback
         trainer = DataLoaderTrainer(
             model=model,
@@ -967,7 +1224,7 @@ def main():
             eval_dataset=test_dataset,
             data_collator=FastSafeCollator(validate_every_n=0),
             compute_metrics=compute_metrics,
-            callbacks=[CleanLoggingCallback()],
+            callbacks=callbacks,
         )
         
         # Log training setup information
