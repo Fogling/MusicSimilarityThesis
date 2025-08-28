@@ -108,13 +108,11 @@ class CleanLoggingCallback(TrainerCallback):
                            f"eval_accuracy={logs.get('eval_accuracy', 0):.3f}")
                 self.last_logged_epoch = current_epoch
                 
-                # Remove clutter metrics to prevent HuggingFace from logging the full dict
-                metrics_to_remove = [
-                    'eval_runtime', 'eval_samples_per_second', 'eval_steps_per_second',
-                    'eval_model_preparation_time'
-                ]
-                for metric in metrics_to_remove:
-                    logs.pop(metric, None)
+                # Only remove evaluation metrics, keep other important logs for trainer
+                eval_keys_to_remove = [k for k in logs.keys() if k.startswith('eval_')]
+                for key in eval_keys_to_remove:
+                    if key not in ['eval_loss', 'eval_accuracy']:  # Keep the main metrics
+                        logs.pop(key, None)
 
 class ResampleCallback(TrainerCallback):
     """
@@ -126,16 +124,18 @@ class ResampleCallback(TrainerCallback):
         self.enabled = bool(enabled)
 
     def on_epoch_begin(self, args, state, control, **kwargs):
-        # Only resample during actual training epochs, not during evaluation
-        # Check if we're in evaluation mode by looking for evaluation context
+        # Add debug logging to understand why resampling stops after epoch 1
         model = kwargs.get('model')
         is_evaluation_phase = (model is not None and not model.training) if model else False
+        current_epoch = int(state.epoch) + 1
         
-        if (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch") and 
-            not is_evaluation_phase):
+        # Temporarily disable the evaluation check to see if that's blocking training
+        logger.info(f"[ResampleCallback] on_epoch_begin called for epoch {current_epoch}")
+        
+        if (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch")):
             try:
                 self.train_dataset.resample_for_new_epoch()
-                logger.info(f"[ResampleCallback] Regenerated triplets for epoch {int(state.epoch)+1}")
+                logger.info(f"[ResampleCallback] Regenerated triplets for epoch {current_epoch}")
             except Exception as e:
                 print(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
                 logger.warning(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
