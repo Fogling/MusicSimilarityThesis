@@ -16,7 +16,7 @@
         "weight_decay": 0.05,
         "gradient_accumulation_steps": 2,
         "warmup_ratio": 0.1,
-        "triplet_margin": 0.25,
+        "triplet_margin": 0.5,
         "num_workers": 12,
         "pin_memory": true,
         "prefetch_factor": 8,
@@ -42,8 +42,8 @@
         "min_files_per_genre": 2,
         "max_positive_tracks": 6,
         "triplets_per_positive_track": 1,
-        "resample_each_epoch": false,
-        "negative_mining": "none"
+        "resample_each_epoch": true,
+        "negative_mining": "semi_hard"
     },
     "paths": {
         "model_output_dir": "ast_triplet_output",

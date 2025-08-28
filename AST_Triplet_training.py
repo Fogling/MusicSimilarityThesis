@@ -130,7 +130,7 @@ class ResampleCallback(TrainerCallback):
         current_epoch = int(state.epoch) + 1
         
         # Temporarily disable the evaluation check to see if that's blocking training
-        logger.info(f"[ResampleCallback] on_epoch_begin called for epoch {current_epoch}")
+        #logger.info(f"[ResampleCallback] on_epoch_begin called for epoch {current_epoch}")  
         
         if (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch")):
             try:
