@@ -298,6 +298,7 @@ def _get_chunk_positions(total_length: int, chunk_size: int, max_chunks: int,
                         overlap: float, strategy: str, seed: Optional[int] = None) -> List[int]:
     """
     Get chunk start positions based on sampling strategy.
+    Excludes the first and last 15 seconds from chunk sampling.
     
     Args:
         total_length: Total audio length in samples
@@ -310,67 +311,75 @@ def _get_chunk_positions(total_length: int, chunk_size: int, max_chunks: int,
     Returns:
         List of start positions for chunks
     """
+    # Calculate 15-second exclusion buffer in samples (assuming 16kHz sample rate)
+    exclusion_buffer = 15 * 16000
+    
+    # Define valid range for chunk sampling (excluding first/last 15s)
+    available_start = exclusion_buffer
+    available_end = total_length - exclusion_buffer - chunk_size
+    
+    # Check if we have enough space for any chunks
+    if available_end < available_start:
+        logger.warning(f"Audio too short for chunk sampling: need at least {(2 * exclusion_buffer + chunk_size) / 16000:.1f}s")
+        return []
+    
+    available_length = available_end - available_start
+    
     if strategy == "sequential":
-        # Original behavior: take chunks from the beginning
+        # Sequential chunks starting from 15s mark
         step_size = int(chunk_size * (1 - overlap))
         positions = []
-        for i in range(0, total_length - chunk_size + 1, step_size):
+        for i in range(available_start, available_end + 1, step_size):
             positions.append(i)
             if len(positions) >= max_chunks:
                 break
         return positions
     
     elif strategy == "random":
-        # Random sampling: select random positions throughout the audio
+        # Modified random sampling with guaranteed first chunk positioning
         if seed is not None:
             np.random.seed(seed)
         
-        # All possible start positions
-        max_start = total_length - chunk_size
-        if max_start <= 0:
-            return [0]
-        
-        # Generate random positions ensuring no overlap if specified
         positions = []
-        attempts = 0
-        max_attempts = max_chunks * 10  # Prevent infinite loops
         
-        while len(positions) < max_chunks and attempts < max_attempts:
-            pos = np.random.randint(0, max_start + 1)
-            
-            # Check for overlap with existing positions
-            if overlap == 0.0:
-                min_distance = chunk_size
-                too_close = any(abs(pos - existing) < min_distance for existing in positions)
-                if not too_close:
-                    positions.append(pos)
-            else:
+        # First chunk: always in the first 10s of valid range
+        first_window_end = min(available_start + chunk_size, available_end)
+        if first_window_end > available_start:
+            pos1 = np.random.randint(available_start, first_window_end + 1)
+            positions.append(pos1)
+        
+        # Remaining chunks: randomly sample from the rest of the valid range
+        remaining_start = available_start + chunk_size
+        for i in range(1, max_chunks):
+            if remaining_start <= available_end:
+                pos = np.random.randint(remaining_start, available_end + 1)
                 positions.append(pos)
-            
-            attempts += 1
         
         return sorted(positions)
     
     elif strategy == "spaced":
-        # Evenly spaced throughout the audio
+        # Evenly spaced within the valid range
         if max_chunks == 1:
-            # Take from the middle
-            return [(total_length - chunk_size) // 2]
+            # Take from the middle of valid range
+            return [(available_start + available_end) // 2]
         
-        # Divide audio into segments and take one chunk from each
-        segment_size = (total_length - chunk_size) // (max_chunks - 1)
-        positions = []
-        
-        for i in range(max_chunks):
-            if i == max_chunks - 1:
-                # Last chunk: take from the end
-                pos = total_length - chunk_size
-            else:
-                pos = i * segment_size
+        # Divide valid range into segments
+        if max_chunks > 1:
+            segment_size = available_length // (max_chunks - 1)
+            positions = []
             
-            positions.append(max(0, pos))
+            for i in range(max_chunks):
+                if i == max_chunks - 1:
+                    # Last chunk: take from the end of valid range
+                    pos = available_end
+                else:
+                    pos = available_start + i * segment_size
+                
+                positions.append(pos)
+            
+            return positions
         
-        return positions
+        return []
     
     else:
         raise ValueError(f"Unknown chunk strategy: {strategy}")

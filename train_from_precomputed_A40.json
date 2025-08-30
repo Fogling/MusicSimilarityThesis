@@ -16,7 +16,7 @@
         "weight_decay": 0.05,
         "gradient_accumulation_steps": 2,
         "warmup_ratio": 0.1,
-        "triplet_margin": 0.3,
+        "triplet_margin": 0.5,
         "num_workers": 12,
         "pin_memory": true,
         "prefetch_factor": 8,
