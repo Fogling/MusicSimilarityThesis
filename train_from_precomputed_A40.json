@@ -11,11 +11,11 @@
     },
     "training": {
         "batch_size": 24,
-        "epochs": 10,
+        "epochs": 15,
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
-        "gradient_accumulation_steps": 2,
-        "warmup_ratio": 0.1,
+        "gradient_accumulation_steps": 3,
+        "warmup_ratio": 0.25,
         "triplet_margin": 0.5,
         "num_workers": 12,
         "pin_memory": true,
@@ -26,7 +26,7 @@
         "logging_steps": 500,
         "save_steps": 1000,
         "eval_steps": 500,
-        "disable_tqdm": false,
+        "disable_tqdm": true,
         "seed": 42,
         "force_single_gpu": true,
         "bf16": true,
@@ -43,13 +43,15 @@
         "max_positive_tracks": 6,
         "triplets_per_positive_track": 1,
         "resample_each_epoch": false,
-        "negative_mining": "semi_hard"
+        "negative_mining": "semi_hard",
+        "stratified_batching": true,
+        "min_per_subgenre": 2
     },
     "paths": {
         "model_output_dir": "ast_triplet_output",
         "log_dir": "logs",
         "checkpoint_dir": null
     },
-    "experiment_name": "from_precomputed_A40_bf16",
-    "description": "A40: bf16+TF32, larger batch, higher dataloader throughput"
+    "experiment_name": "8 subgenre compare run with semi_hard mining and stratified_batching enabled",
+    "description": "also changed warumup from 0.1 to 0.25 and GA from 2 to 3"
 }

@@ -140,6 +140,128 @@ class ResampleCallback(TrainerCallback):
                 print(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
                 logger.warning(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
 
+
+class StratifiedSubgenreBatchSampler:
+    """
+    BatchSampler that ensures each batch contains a minimum number of samples 
+    from each subgenre, with remainder filled randomly.
+    
+    This sampler groups dataset indices by subgenre and creates batches where:
+    1. Each subgenre gets at least min_per_subgenre samples per batch
+    2. Remaining slots are filled randomly from all available samples
+    3. Supports dynamic resampling when dataset.triplets_active changes
+    """
+    
+    def __init__(self, dataset, batch_size, min_per_subgenre=2):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.min_per_subgenre = min_per_subgenre
+        self._last_triplets_id = None  # Track when triplets_active changes
+        self._rebuild_indices()
+        
+    def _rebuild_indices(self):
+        """Rebuild subgenre indices from current dataset.triplets_active."""
+        # Group indices by subgenre
+        self.subgenre_indices = defaultdict(list)
+        
+        for idx, (_, _, _, subgenre) in enumerate(self.dataset.triplets_active):
+            self.subgenre_indices[subgenre].append(idx)
+        
+        self.subgenres = list(self.subgenre_indices.keys())
+        self.num_subgenres = len(self.subgenres)
+        
+        # Validate configuration
+        min_required = self.num_subgenres * self.min_per_subgenre
+        if self.batch_size < min_required:
+            logger.warning(
+                f"Batch size ({self.batch_size}) < required minimum ({min_required}) "
+                f"for {self.num_subgenres} subgenres × {self.min_per_subgenre} min_per_subgenre. "
+                f"Will use best-effort stratification."
+            )
+            # Adjust min_per_subgenre to fit available batch size
+            self.min_per_subgenre = max(1, self.batch_size // self.num_subgenres)
+        
+        # Calculate slots allocation
+        self.guaranteed_slots = self.num_subgenres * self.min_per_subgenre
+        self.random_slots = self.batch_size - self.guaranteed_slots
+        
+        logger.info(
+            f"Stratified batching: {self.num_subgenres} subgenres, "
+            f"{self.min_per_subgenre} guaranteed per subgenre, "
+            f"{self.random_slots} random slots per batch"
+        )
+        
+        # Mark triplets version for change detection
+        self._last_triplets_id = id(self.dataset.triplets_active)
+    
+    def _check_for_resampling(self):
+        """Check if dataset has been resampled and rebuild indices if needed."""
+        current_triplets_id = id(self.dataset.triplets_active)
+        if current_triplets_id != self._last_triplets_id:
+            logger.info("Dataset resampled detected, rebuilding stratified indices...")
+            self._rebuild_indices()
+    
+    def __iter__(self):
+        """Generate stratified batches."""
+        # Check for dataset resampling
+        self._check_for_resampling()
+        
+        # Create cycling iterators for each subgenre
+        subgenre_iterators = {}
+        for subgenre in self.subgenres:
+            indices = self.subgenre_indices[subgenre].copy()
+            np.random.shuffle(indices)  # Shuffle within subgenre
+            subgenre_iterators[subgenre] = iter(indices)
+        
+        # All indices for random sampling
+        all_indices = list(range(len(self.dataset.triplets_active)))
+        np.random.shuffle(all_indices)
+        random_iterator = iter(all_indices)
+        
+        # Generate batches
+        total_samples = len(self.dataset.triplets_active)
+        num_batches = (total_samples + self.batch_size - 1) // self.batch_size
+        
+        for batch_idx in range(num_batches):
+            batch_indices = []
+            
+            # 1. Add guaranteed samples from each subgenre
+            for subgenre in self.subgenres:
+                for _ in range(self.min_per_subgenre):
+                    try:
+                        idx = next(subgenre_iterators[subgenre])
+                        batch_indices.append(idx)
+                    except StopIteration:
+                        # Exhausted this subgenre, restart iterator
+                        indices = self.subgenre_indices[subgenre].copy()
+                        np.random.shuffle(indices)
+                        subgenre_iterators[subgenre] = iter(indices)
+                        try:
+                            idx = next(subgenre_iterators[subgenre])
+                            batch_indices.append(idx)
+                        except StopIteration:
+                            # Subgenre is empty, skip
+                            continue
+            
+            # 2. Fill remaining slots randomly
+            remaining_slots = self.batch_size - len(batch_indices)
+            for _ in range(remaining_slots):
+                try:
+                    idx = next(random_iterator)
+                    batch_indices.append(idx)
+                except StopIteration:
+                    # Exhausted all samples, we're done
+                    break
+            
+            if batch_indices:
+                np.random.shuffle(batch_indices)  # Final shuffle of the batch
+                yield batch_indices
+    
+    def __len__(self):
+        """Return number of batches."""
+        total_samples = len(self.dataset.triplets_active)
+        return (total_samples + self.batch_size - 1) // self.batch_size
+
 # ========== UTILITY FUNCTIONS ==========
 
 def set_random_seeds(seed: int) -> None:
@@ -1088,19 +1210,49 @@ def save_model_and_artifacts(model: ImprovedASTTripletWrapper, config: Experimen
 
 class DataLoaderTrainer(Trainer):
     """Trainer that forwards full DataLoader knobs (prefetch_factor, persistent_workers, etc.)."""
+    
+    def __init__(self, config=None, **kwargs):
+        """Initialize trainer with optional config for stratified batching."""
+        super().__init__(**kwargs)
+        self.config = config
+    
     def _build_dl(self, dataset, shuffle: bool):
         args = self.args
-        return DataLoader(
-            dataset,
-            batch_size=args.train_batch_size if shuffle else args.eval_batch_size,
-            shuffle=shuffle,
-            collate_fn=self.data_collator,
-            num_workers=args.dataloader_num_workers,
-            pin_memory=args.dataloader_pin_memory,
-            persistent_workers=getattr(args, "dataloader_persistent_workers", False),
-            prefetch_factor=getattr(args, "dataloader_prefetch_factor", 2),
-            drop_last=False
-        )
+        
+        # Use stratified sampling ONLY for training (shuffle=True) when enabled
+        if (self.config and 
+            getattr(self.config.data, 'stratified_batching', False) == True and 
+            shuffle):
+            
+            logger.info("Using stratified batch sampling for training")
+            batch_sampler = StratifiedSubgenreBatchSampler(
+                dataset=dataset,
+                batch_size=args.train_batch_size,
+                min_per_subgenre=self.config.data.min_per_subgenre
+            )
+            
+            return DataLoader(
+                dataset,
+                batch_sampler=batch_sampler,
+                collate_fn=self.data_collator,
+                num_workers=args.dataloader_num_workers,
+                pin_memory=args.dataloader_pin_memory,
+                persistent_workers=getattr(args, "dataloader_persistent_workers", False),
+                prefetch_factor=getattr(args, "dataloader_prefetch_factor", 2)
+            )
+        else:
+            # Original logic for evaluation or when stratified batching disabled
+            return DataLoader(
+                dataset,
+                batch_size=args.train_batch_size if shuffle else args.eval_batch_size,
+                shuffle=shuffle,
+                collate_fn=self.data_collator,
+                num_workers=args.dataloader_num_workers,
+                pin_memory=args.dataloader_pin_memory,
+                persistent_workers=getattr(args, "dataloader_persistent_workers", False),
+                prefetch_factor=getattr(args, "dataloader_prefetch_factor", 2),
+                drop_last=False
+            )
 
     def get_train_dataloader(self):
         return self._build_dl(self.train_dataset, shuffle=True)
@@ -1254,6 +1406,7 @@ def main():
             data_collator=FastSafeCollator(validate_every_n=0),
             compute_metrics=compute_metrics,
             callbacks=callbacks,
+            config=config,
         )
         
         # Log training setup information

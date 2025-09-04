@@ -95,6 +95,10 @@ class DataConfig:
     resample_each_epoch: bool = False   # If True, regenerate fresh triplets at the start of each epoch
     negative_mining: str = "none"       # Choose mining strategy: "none", "semi_hard", or "hard"
     
+    # Stratified batching configuration  
+    stratified_batching: bool = False      # Enable balanced subgenre representation per batch
+    min_per_subgenre: int = 2             # Minimum samples per subgenre per batch
+    
     # Quick testing configuration
     quick_test_run: bool = False      # If True, use only subset of data for quick error detection
     quick_test_fraction: float = 0.05 # Fraction of data to use for quick test runs (default 5%)
@@ -179,6 +183,19 @@ class ExperimentConfig:
         
         if self.data.split_file_test and not Path(self.data.split_file_test).exists():
             raise ValueError(f"Test split file does not exist: {self.data.split_file_test}")
+        
+        # Validate stratified batching configuration
+        if self.data.stratified_batching:
+            if self.data.min_per_subgenre <= 0:
+                raise ValueError("min_per_subgenre must be positive")
+            
+            # Conservative estimate: assume 8 subgenres
+            estimated_min_batch_size = 8 * self.data.min_per_subgenre
+            if self.training.batch_size < estimated_min_batch_size:
+                raise ValueError(
+                    f"Batch size ({self.training.batch_size}) too small for stratified batching. "
+                    f"Need at least {estimated_min_batch_size} (8 subgenres × {self.data.min_per_subgenre} min_per_subgenre)"
+                )
 
 
 def create_default_config(test_run: bool = False) -> ExperimentConfig:
