@@ -907,7 +907,7 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
             continue
             
         subgenre = subdir.name
-        files = [f for f in subdir.iterdir() if f.suffix == '.pt']
+        files = sorted([f for f in subdir.iterdir() if f.suffix == '.pt'])
         
         # Group files by track name (remove _chunkX.pt suffix)
         tracks = defaultdict(list)
@@ -931,7 +931,8 @@ def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
     train_tracks = defaultdict(dict)  # {subgenre: {track_name: [chunk_files]}}
     test_tracks = defaultdict(dict)   # {subgenre: {track_name: [chunk_files]}}
     
-    for subgenre, tracks in subgenre_tracks.items():
+    for subgenre in sorted(subgenre_tracks.keys()):
+        tracks = subgenre_tracks[subgenre]
         track_names = list(tracks.keys())
         random.shuffle(track_names)  # Randomize track order
         

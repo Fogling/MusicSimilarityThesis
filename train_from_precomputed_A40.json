@@ -11,7 +11,7 @@
     },
     "training": {
         "batch_size": 24,
-        "epochs": 15,
+        "epochs": 10,
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
         "gradient_accumulation_steps": 2,
@@ -27,7 +27,7 @@
         "save_steps": 1000,
         "eval_steps": 500,
         "disable_tqdm": false,
-        "seed": 25,
+        "seed": 42,
         "force_single_gpu": true,
         "bf16": true,
         "fp16": false,
