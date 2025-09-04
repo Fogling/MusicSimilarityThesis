@@ -8,6 +8,7 @@ The genres and subgenres I train the network on as of right now are:
 Techno:
   - Emotional Techno
   - Dark Techno
+  - Party Techno
 
 House:
   - Chill House
