@@ -32,8 +32,15 @@ class TrainingConfig:
     learning_rate: float = 1e-4
     weight_decay: float = 0.01
     gradient_accumulation_steps: int = 6
-    warmup_ratio: float = 0.1
     triplet_margin: float = 0.3
+    
+    # Learning rate scheduler configuration
+    use_custom_lr: bool = True  # Use custom dual-group LR scheduler
+    head_lr_multiplier: float = 10.0  # LR multiplier for projection head vs transformer base
+    multiplier_converge_epoch: int = 15  # Epoch after which multiplier becomes 1.0
+    warmup_steps_pct: float = 0.04  # Warmup percentage of total steps (3-5% typical)
+    min_lr: float = 1e-6  # Minimum learning rate floor for both groups
+    use_cosine_scheduler: bool = True  # Use cosine annealing scheduler
     
     # Data loading
     num_workers: int = 2
@@ -73,8 +80,6 @@ class TrainingConfig:
             raise ValueError("Batch size must be positive")
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
-        if not 0 <= self.warmup_ratio <= 1:
-            raise ValueError("Warmup ratio must be between 0 and 1")
         if self.triplet_margin < 0:
             raise ValueError("Triplet margin must be non-negative")
 

@@ -15,15 +15,19 @@
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
         "gradient_accumulation_steps": 3,
-        "warmup_ratio": 0.25,
         "triplet_margin": 0.5,
+        "head_lr_multiplier": 4.0,
+        "multiplier_converge_epoch": 6,
+        "warmup_steps_pct": 0.04,
+        "min_lr": 1e-6,
+        "use_cosine_scheduler": true,
         "num_workers": 12,
         "pin_memory": true,
         "prefetch_factor": 8,
         "persistent_workers": true,
         "eval_strategy": "epoch",
         "save_strategy": "no",
-        "logging_steps": 500,
+        "logging_steps": 100,
         "save_steps": 1000,
         "eval_steps": 500,
         "disable_tqdm": true,
@@ -43,7 +47,7 @@
         "max_positive_tracks": 6,
         "triplets_per_positive_track": 1,
         "resample_each_epoch": false,
-        "negative_mining": "semi_hard",
+        "negative_mining": "none",
         "stratified_batching": true,
         "min_per_subgenre": 2
     },
@@ -52,6 +56,6 @@
         "log_dir": "logs",
         "checkpoint_dir": null
     },
-    "experiment_name": "8 subgenre compare run with semi_hard mining and stratified_batching enabled",
-    "description": "also changed warumup from 0.1 to 0.25 and GA from 2 to 3"
+    "experiment_name": "Added spohisticated LR logic: Custom Lr sheduling and LR multiplier for head",
+    "description": "stratified batching on"
 }

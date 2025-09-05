@@ -34,6 +34,7 @@ from tqdm import tqdm
 from dataclasses import dataclass
 
 from config import ExperimentConfig, load_or_create_config
+from lr_scheduler import create_dual_group_optimizer, create_dual_group_scheduler, DualGroupLRCallback
 
 cache = os.environ['SLURM_JOB_TMP']
 
@@ -1211,10 +1212,11 @@ def save_model_and_artifacts(model: ImprovedASTTripletWrapper, config: Experimen
 class DataLoaderTrainer(Trainer):
     """Trainer that forwards full DataLoader knobs (prefetch_factor, persistent_workers, etc.)."""
     
-    def __init__(self, config=None, **kwargs):
+    def __init__(self, config=None, use_custom_scheduler=False, **kwargs):
         """Initialize trainer with optional config for stratified batching."""
         super().__init__(**kwargs)
         self.config = config
+        self.use_custom_scheduler = use_custom_scheduler
     
     def _build_dl(self, dataset, shuffle: bool):
         args = self.args
@@ -1260,6 +1262,15 @@ class DataLoaderTrainer(Trainer):
     def get_eval_dataloader(self, eval_dataset=None):
         ds = eval_dataset if eval_dataset is not None else self.eval_dataset
         return self._build_dl(ds, shuffle=False)
+    
+    def create_scheduler(self, num_training_steps: int, optimizer: torch.optim.Optimizer = None):
+        """Override scheduler creation to use custom dual-group scheduler when enabled."""
+        if self.use_custom_scheduler:
+            # Don't create default scheduler, our callback will handle it
+            return None
+        else:
+            # Use default HuggingFace scheduler
+            return super().create_scheduler(num_training_steps, optimizer)
 
 
 def main():
@@ -1353,6 +1364,15 @@ def main():
         
         model = ImprovedASTTripletWrapper(config).to(device)
         
+        # Create custom optimizer with separate parameter groups for sophisticated LR scheduling
+        use_custom_lr = config.training.use_custom_lr
+        if use_custom_lr:
+            logger.info("Using custom dual-group optimizer with sophisticated LR scheduling")
+            optimizer = create_dual_group_optimizer(model, config)
+        else:
+            logger.info("Using default HuggingFace optimizer")
+            optimizer = None
+        
         # Setup training arguments with clean logging
         training_args_dict = {
             "output_dir": config.paths.model_output_dir,
@@ -1363,7 +1383,6 @@ def main():
             "gradient_accumulation_steps": config.training.gradient_accumulation_steps,
             "num_train_epochs": config.training.epochs,
             "weight_decay": config.training.weight_decay,
-            "warmup_ratio": config.training.warmup_ratio,
             "logging_steps": config.training.logging_steps,
             "dataloader_num_workers": config.training.num_workers,
             "dataloader_pin_memory": config.training.pin_memory,
@@ -1396,18 +1415,38 @@ def main():
         
         resample_flag = bool(getattr(config.data, "resample_each_epoch", False))
         callbacks = [CleanLoggingCallback(), ResampleCallback(train_dataset, enabled=resample_flag)]
+        
+        # Create custom LR scheduler if using sophisticated scheduling
+        if use_custom_lr:
+            # Calculate scheduler parameters
+            total_train_samples = len(train_dataset)
+            effective_batch_size = config.training.batch_size * config.training.gradient_accumulation_steps
+            steps_per_epoch = (total_train_samples + effective_batch_size - 1) // effective_batch_size
+            total_steps = steps_per_epoch * config.training.epochs
+            
+            # Create PyTorch LambdaLR scheduler (HuggingFace compatible)
+            lr_scheduler = create_dual_group_scheduler(optimizer, config, total_steps, steps_per_epoch)
+            
+            logger.info(f"PyTorch LambdaLR scheduler created with {total_steps} total steps, {steps_per_epoch} steps/epoch")
 
         # Initialize trainer with custom callback
-        trainer = DataLoaderTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=test_dataset,
-            data_collator=FastSafeCollator(validate_every_n=0),
-            compute_metrics=compute_metrics,
-            callbacks=callbacks,
-            config=config,
-        )
+        trainer_kwargs = {
+            "model": model,
+            "args": training_args,
+            "train_dataset": train_dataset,
+            "eval_dataset": test_dataset,
+            "data_collator": FastSafeCollator(validate_every_n=0),
+            "compute_metrics": compute_metrics,
+            "callbacks": callbacks,
+            "config": config,
+            "use_custom_scheduler": use_custom_lr,
+        }
+        
+        # Only add custom optimizers when using custom LR scheduler
+        if use_custom_lr:
+            trainer_kwargs["optimizers"] = (optimizer, lr_scheduler)
+        
+        trainer = DataLoaderTrainer(**trainer_kwargs)
         
         # Log training setup information
         total_train_samples = len(train_dataset)
