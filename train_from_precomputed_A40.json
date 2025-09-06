@@ -6,19 +6,22 @@
             128
         ],
         "activation": "relu",
-        "dropout_rate": 0.15,
+        "dropout_rate": 0.3,
         "output_dim": 128
     },
     "training": {
         "batch_size": 24,
         "epochs": 15,
-        "learning_rate": 2e-5,
-        "weight_decay": 0.05,
+        "learning_rate": 1e-5,
+        "weight_decay": 0.1,
         "gradient_accumulation_steps": 3,
-        "triplet_margin": 0.5,
+        "triplet_margin": 0.3,
+        "margin_schedule_end_epoch": 6,
+        "margin_schedule_max": 0.7,
+        "gradient_clip_norm": 1.0,
         "head_lr_multiplier": 4.0,
-        "multiplier_converge_epoch": 6,
-        "warmup_steps_pct": 0.04,
+        "multiplier_converge_epoch": 3,
+        "warmup_steps_pct": 0.05,
         "min_lr": 1e-6,
         "use_cosine_scheduler": true,
         "num_workers": 12,
@@ -48,7 +51,7 @@
         "triplets_per_positive_track": 1,
         "resample_each_epoch": false,
         "negative_mining": "none",
-        "stratified_batching": true,
+        "stratified_batching": false,
         "min_per_subgenre": 2
     },
     "paths": {
@@ -56,6 +59,6 @@
         "log_dir": "logs",
         "checkpoint_dir": null
     },
-    "experiment_name": "Added spohisticated LR logic: Custom Lr sheduling and LR multiplier for head",
+    "experiment_name": "testing different values for dropout, margin, LR",
     "description": "stratified batching on"
 }

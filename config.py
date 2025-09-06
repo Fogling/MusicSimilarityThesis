@@ -33,6 +33,9 @@ class TrainingConfig:
     weight_decay: float = 0.01
     gradient_accumulation_steps: int = 6
     triplet_margin: float = 0.3
+    margin_schedule_end_epoch: int = 10  # Epoch where margin reaches max value
+    margin_schedule_max: float = 0.8    # Maximum margin value
+    gradient_clip_norm: float = 1.0     # Gradient clipping norm
     
     # Learning rate scheduler configuration
     use_custom_lr: bool = True  # Use custom dual-group LR scheduler

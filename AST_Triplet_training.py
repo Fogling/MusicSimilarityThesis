@@ -61,6 +61,18 @@ class ModelLoadError(Exception):
     pass
 
 
+class MarginSchedulingCallback(TrainerCallback):
+    """Callback to update triplet margin based on epoch scheduling."""
+    
+    def __init__(self, model):
+        self.model = model
+    
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        """Update margin at the beginning of each epoch."""
+        current_epoch = int(state.epoch) if state.epoch is not None else 0
+        self.model.set_epoch(current_epoch)
+
+
 class CleanLoggingCallback(TrainerCallback):
     """Custom callback for clean, readable logging without redundant information."""
     
@@ -708,8 +720,15 @@ class ImprovedASTTripletWrapper(nn.Module):
         if self.negative_mining not in {"none", "semi_hard", "hard"}:
             self.negative_mining = "none"
 
+        # Margin scheduling parameters
+        self.initial_margin = config.training.triplet_margin
+        self.margin_schedule_end_epoch = config.training.margin_schedule_end_epoch
+        self.margin_schedule_max = config.training.margin_schedule_max
+        self.current_epoch = 0
+        
         logger.info(f"Model initialized with projection to {config.model.output_dim}D")
-        logger.info(f"Triplet margin: {self.triplet_margin} | negative_mining={self.negative_mining}")
+        logger.info(f"Margin scheduling: {self.initial_margin} → {self.margin_schedule_max} over {self.margin_schedule_end_epoch} epochs")
+        logger.info(f"Negative mining: {self.negative_mining}")
         
     
     def _build_projection_head(self) -> nn.Module:
@@ -745,6 +764,22 @@ class ImprovedASTTripletWrapper(nn.Module):
         layers.append(nn.Linear(input_size, output_dim))
         
         return nn.Sequential(*layers)
+    
+    def set_epoch(self, epoch: int):
+        """Set current epoch for margin scheduling."""
+        self.current_epoch = epoch
+        current_margin = self.get_current_margin()
+        self.triplet_margin = current_margin
+        logger.info(f"Epoch {epoch}: Using margin {current_margin:.3f}")
+    
+    def get_current_margin(self) -> float:
+        """Get current margin based on linear scheduling."""
+        if self.current_epoch >= self.margin_schedule_end_epoch:
+            return self.margin_schedule_max
+        
+        # Linear interpolation from initial_margin to max_margin
+        progress = self.current_epoch / self.margin_schedule_end_epoch
+        return self.initial_margin + (self.margin_schedule_max - self.initial_margin) * progress
     
     def embed(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Generate embeddings with error handling."""
@@ -1394,6 +1429,7 @@ def main():
             "log_level": "warning",  # Reduce HF Trainer's internal logging
             "seed": config.training.seed,
             "data_seed": config.training.seed,
+            "max_grad_norm": config.training.gradient_clip_norm,  # Gradient clipping
         }
 
         # Precision / GPU knobs
@@ -1414,7 +1450,11 @@ def main():
         training_args = TrainingArguments(**training_args_dict)
         
         resample_flag = bool(getattr(config.data, "resample_each_epoch", False))
-        callbacks = [CleanLoggingCallback(), ResampleCallback(train_dataset, enabled=resample_flag)]
+        callbacks = [
+            CleanLoggingCallback(), 
+            ResampleCallback(train_dataset, enabled=resample_flag),
+            MarginSchedulingCallback(model)
+        ]
         
         # Create custom LR scheduler if using sophisticated scheduling
         if use_custom_lr:
