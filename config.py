@@ -100,7 +100,9 @@ class DataConfig:
     max_positive_tracks: int = 12  # Maximum positive tracks per anchor (balanced for clusters)
     triplets_per_positive_track: int = 2  # Triplets per positive track (prevents overfitting)
     
-    resample_each_epoch: bool = False   # If True, regenerate fresh triplets at the start of each epoch
+    resample_train_samples: bool = False   # If True, regenerate fresh triplets at the start of each epoch
+    resample_fraction: float = 1.0      # Fraction of train dataset to resample (0.0-1.0)
+    resample_cadence: int = 1           # Resample every N epochs (e.g., 3 = every 3rd epoch starting from epoch 3)
     negative_mining: str = "none"       # Choose mining strategy: "none", "semi_hard", or "hard"
     
     # Stratified batching configuration  

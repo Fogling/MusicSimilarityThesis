@@ -129,29 +129,36 @@ class CleanLoggingCallback(TrainerCallback):
 
 class ResampleCallback(TrainerCallback):
     """
-    When enabled via config (data.resample_each_epoch == True), this callback
-    asks the train dataset to regenerate its triplets at the start of each epoch.
+    When enabled via config (data.resample_train_samples == True), this callback
+    asks the train dataset to regenerate its triplets at the start of each epoch
+    according to the configured cadence.
     """
-    def __init__(self, train_dataset, enabled: bool):
+    def __init__(self, train_dataset, config, enabled: bool):
         self.train_dataset = train_dataset
+        self.config = config
         self.enabled = bool(enabled)
+        self.resample_cadence = getattr(config.data, "resample_cadence", 1)
 
     def on_epoch_begin(self, args, state, control, **kwargs):
-        # Add debug logging to understand why resampling stops after epoch 1
-        model = kwargs.get('model')
-        is_evaluation_phase = (model is not None and not model.training) if model else False
         current_epoch = int(state.epoch) + 1
         
-        # Temporarily disable the evaluation check to see if that's blocking training
-        #logger.info(f"[ResampleCallback] on_epoch_begin called for epoch {current_epoch}")  
+        if not (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch")):
+            return
+            
+        # Check if this epoch should trigger resampling based on cadence
+        # cadence=1: resample every epoch starting from epoch 1
+        # cadence=3: resample at epochs 3, 6, 9, 12, etc.
+        should_resample = (current_epoch % self.resample_cadence == 0) and (current_epoch >= self.resample_cadence)
         
-        if (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch")):
+        if should_resample:
             try:
                 self.train_dataset.resample_for_new_epoch()
-                logger.info(f"[ResampleCallback] Regenerated triplets for epoch {current_epoch}")
+                logger.info(f"[ResampleCallback] Regenerated triplets for epoch {current_epoch} (cadence={self.resample_cadence})")
             except Exception as e:
                 print(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
                 logger.warning(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
+        else:
+            logger.debug(f"[ResampleCallback] Epoch {current_epoch}: No resampling (cadence={self.resample_cadence})")
 
 
 class StratifiedSubgenreBatchSampler:
@@ -366,7 +373,7 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         self.triplets_active = list(self.triplets_original)
 
         # resampling flag (defaults to False if not present)
-        self._resample_enabled = bool(getattr(self.config.data, "resample_each_epoch", False))
+        self._resample_enabled = bool(getattr(self.config.data, "resample_train_samples", False))
 
         # build indices that allow resampling (subgenre -> track -> chunks)
         self._build_indices_from_triplets(self.triplets_original)
@@ -377,7 +384,7 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         actually_resampling = self._resample_enabled and split_name == "train"
         logger.info(
             f"Initialized dataset ({split_name}) with {len(self.triplets_active)} triplets "
-            f"(resample_each_epoch={actually_resampling})"
+            f"(resample_train_samples={actually_resampling})"
         )
 
     def _parse_split_data(self, split_data: Union[List, Dict]) -> List[Tuple[str, str, str, str]]:
@@ -463,9 +470,14 @@ class ImprovedTripletFeatureDataset(TorchDataset):
 
     def resample_for_new_epoch(self):
         """
-        Generate a fresh set of triplets for the new epoch.
+        Generate a fresh set of triplets for the new epoch with configurable partial resampling.
 
-        For each stored anchor:
+        Uses config.data.resample_fraction to determine what percentage of triplets to resample:
+        - 1.0 = resample all triplets (original behavior)  
+        - 0.3 = resample 30% of triplets, keep 70% unchanged
+        - 0.0 = no resampling (keep all original triplets)
+
+        For resampled anchors:
         - Sample a positive from a *different* track in the same subgenre.
         - Sample a negative from any other subgenre.
         - Fall back gracefully if only one track exists in the subgenre.
@@ -473,10 +485,33 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         The resulting triplets are stored in self.triplets_active and used
         during this epoch.
         """
-        new_triplets = []
+        resample_fraction = getattr(self.config.data, "resample_fraction", 1.0)
+        resample_fraction = max(0.0, min(1.0, resample_fraction))  # Clamp to [0, 1]
+        
+        if resample_fraction == 0.0:
+            # No resampling - keep original triplets
+            self.triplets_active = list(self.triplets_original)
+            logger.info(f"[Dataset] No resampling (fraction=0.0), keeping {len(self.triplets_active)} original triplets")
+            return
+        
         rng = random.Random(random.randint(0, 2**31 - 1))
-
-        for anchor_path, sg in self.unique_anchors:
+        
+        # Determine which anchors to resample
+        num_to_resample = int(len(self.unique_anchors) * resample_fraction)
+        anchors_to_resample = rng.sample(self.unique_anchors, num_to_resample)
+        anchors_to_resample_set = set(anchors_to_resample)
+        
+        new_triplets = []
+        
+        # Keep original triplets for anchors not being resampled
+        if resample_fraction < 1.0:
+            for triplet in self.triplets_original:
+                anchor_path, _, _, sg = triplet
+                if (anchor_path, sg) not in anchors_to_resample_set:
+                    new_triplets.append(triplet)
+        
+        # Generate new triplets for selected anchors
+        for anchor_path, sg in anchors_to_resample:
             anchor_track = self._track_name_from_path(anchor_path)
 
             # Choose a positive chunk from a different track in the same subgenre
@@ -501,7 +536,11 @@ class ImprovedTripletFeatureDataset(TorchDataset):
 
         rng.shuffle(new_triplets)
         self.triplets_active = new_triplets
-        logger.info(f"[Dataset] Resampled epoch triplets: {len(self.triplets_active)}")
+        
+        num_resampled = len(anchors_to_resample)
+        num_kept = len(self.triplets_active) - num_resampled
+        logger.info(f"[Dataset] Partial resampling: {num_resampled}/{len(self.unique_anchors)} anchors resampled "
+                   f"({resample_fraction:.1%}), {num_kept} triplets kept, {len(self.triplets_active)} total")
     
     def _safe_load_tensor(self, filepath: str) -> Dict[str, torch.Tensor]:
         if not os.path.exists(filepath):
@@ -1449,10 +1488,10 @@ def main():
         
         training_args = TrainingArguments(**training_args_dict)
         
-        resample_flag = bool(getattr(config.data, "resample_each_epoch", False))
+        resample_flag = bool(getattr(config.data, "resample_train_samples", False))
         callbacks = [
             CleanLoggingCallback(), 
-            ResampleCallback(train_dataset, enabled=resample_flag),
+            ResampleCallback(train_dataset, config, enabled=resample_flag),
             MarginSchedulingCallback(model)
         ]
         
