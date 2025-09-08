@@ -6,22 +6,22 @@
             128
         ],
         "activation": "relu",
-        "dropout_rate": 0.25,
+        "dropout_rate": 0.35,
         "output_dim": 128
     },
     "training": {
         "batch_size": 24,
         "epochs": 15,
-        "learning_rate": 2e-5,
-        "weight_decay": 0.05,
+        "learning_rate": 1e-5,
+        "weight_decay": 0.15,
         "gradient_accumulation_steps": 2,
-        "triplet_margin": 0.5,
-        "margin_schedule_end_epoch": 15,
-        "margin_schedule_max": 0.75,
-        "gradient_clip_norm": 10,
-        "head_lr_multiplier": 4.0,
-        "multiplier_converge_epoch": 3,
-        "warmup_steps_pct": 0.1,
+        "triplet_margin": 0.35,
+        "margin_schedule_end_epoch": 10,
+        "margin_schedule_max": 0.6,
+        "gradient_clip_norm": 5,
+        "head_lr_multiplier": 12.0,
+        "multiplier_converge_epoch": 5,
+        "warmup_steps_pct": 0.15,
         "min_lr": 1e-7,
         "use_cosine_scheduler": true,
         "num_workers": 12,
@@ -50,7 +50,7 @@
         "max_positive_tracks": 6,
         "triplets_per_positive_track": 1,
         "resample_train_samples": true,
-        "resample_fraction": 0.15,
+        "resample_fraction": 0.20,
         "resample_cadence": 2,
         "negative_mining": "none",
         "negative_mining_start_epoch": 5,
@@ -62,6 +62,6 @@
         "log_dir": "logs",
         "checkpoint_dir": null
     },
-    "experiment_name": "7 subgenre sanity run #45",
-    "description": "resample 15% every 2. epoch, dropout 0.25, strat. batching on, semi hard mining from epoch 5 on, margin shedule up to 0.75"
+    "experiment_name": "Trying slightly different parameters for best setup yet (#3)",
+    "description": "resample 20% every 2. epoch, dropout 0.35, decay 0.15, strat. batching on, margin shedule from 0.35 to 0.6 by epoch 10, gradient clip 5, base LR 1e-5 and LR multiplier 12 until Epoch 5"
 }

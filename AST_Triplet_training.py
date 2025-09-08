@@ -145,19 +145,40 @@ class ResampleCallback(TrainerCallback):
         if not (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch")):
             return
             
-        # Check if this epoch should trigger resampling based on cadence
-        # cadence=1: resample every epoch starting from epoch 1
-        # cadence=3: resample at epochs 3, 6, 9, 12, etc.
-        should_resample = (current_epoch % self.resample_cadence == 0) and (current_epoch >= self.resample_cadence)
+        # Get resampling configuration parameters
+        resample_start_epoch = getattr(self.config.data, "resample_start_epoch", 1)
+        resample_schedule_override = getattr(self.config.data, "resample_schedule_override", None)
+        
+        # Check if we haven't reached the start epoch yet
+        if current_epoch < resample_start_epoch:
+            logger.debug(f"[ResampleCallback] Epoch {current_epoch}: Before start epoch {resample_start_epoch}, no resampling")
+            return
+            
+        # Check for epoch-specific override first
+        custom_fraction = None
+        if resample_schedule_override and current_epoch in resample_schedule_override:
+            custom_fraction = resample_schedule_override[current_epoch]
+            should_resample = True
+            logger.info(f"[ResampleCallback] Epoch {current_epoch}: Using schedule override with fraction {custom_fraction}")
+        else:
+            # Check if this epoch should trigger resampling based on cadence
+            # cadence=1: resample every epoch starting from resample_start_epoch
+            # cadence=3: resample at epochs (start_epoch + 3n) where n >= 0
+            epochs_since_start = current_epoch - resample_start_epoch
+            should_resample = (epochs_since_start % self.resample_cadence == 0) and (epochs_since_start >= 0)
         
         if should_resample:
             try:
-                self.train_dataset.resample_for_new_epoch()
+                if custom_fraction is not None:
+                    # Pass custom fraction to resampling method
+                    self.train_dataset.resample_for_new_epoch(custom_fraction=custom_fraction)
+                else:
+                    self.train_dataset.resample_for_new_epoch()
             except Exception as e:
                 print(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
                 logger.warning(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
         else:
-            logger.debug(f"[ResampleCallback] Epoch {current_epoch}: No resampling (cadence={self.resample_cadence})")
+            logger.debug(f"[ResampleCallback] Epoch {current_epoch}: No resampling (cadence={self.resample_cadence}, start_epoch={resample_start_epoch})")
 
 
 class StratifiedSubgenreBatchSampler:
@@ -476,11 +497,14 @@ class ImprovedTripletFeatureDataset(TorchDataset):
             self.neg_pool_by_sg[sg] = pool
 
 
-    def resample_for_new_epoch(self):
+    def resample_for_new_epoch(self, custom_fraction=None):
         """
         Generate a fresh set of triplets for the new epoch with configurable partial resampling.
 
-        Uses config.data.resample_fraction to determine what percentage of triplets to resample:
+        Args:
+            custom_fraction: If provided, use this fraction instead of config.data.resample_fraction
+
+        Uses config.data.resample_fraction (or custom_fraction) to determine what percentage of triplets to resample:
         - 1.0 = resample all triplets (original behavior)  
         - 0.3 = resample 30% of triplets, keep 70% unchanged
         - 0.0 = no resampling (keep all original triplets)
@@ -493,13 +517,14 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         The resulting triplets are stored in self.triplets_active and used
         during this epoch.
         """
-        resample_fraction = getattr(self.config.data, "resample_fraction", 1.0)
+        resample_fraction = custom_fraction if custom_fraction is not None else getattr(self.config.data, "resample_fraction", 1.0)
         resample_fraction = max(0.0, min(1.0, resample_fraction))  # Clamp to [0, 1]
         
         if resample_fraction == 0.0:
             # No resampling - keep original triplets
             self.triplets_active = list(self.triplets_original)
-            logger.info(f"[Dataset] No resampling (fraction=0.0), keeping {len(self.triplets_active)} original triplets")
+            fraction_source = "custom" if custom_fraction is not None else "config"
+            logger.info(f"[Dataset] No resampling (fraction=0.0 from {fraction_source}), keeping {len(self.triplets_active)} original triplets")
             return
         
         rng = random.Random(random.randint(0, 2**31 - 1))
@@ -547,8 +572,9 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         
         num_resampled = len(anchors_to_resample)
         num_kept = len(self.triplets_active) - num_resampled
+        fraction_source = "custom" if custom_fraction is not None else "config"
         logger.info(f"[Dataset] Partial resampling: {num_resampled}/{len(self.unique_anchors)} anchors resampled "
-                   f"({resample_fraction:.1%}), {num_kept} triplets kept, {len(self.triplets_active)} total")
+                   f"({resample_fraction:.1%} from {fraction_source}), {num_kept} triplets kept, {len(self.triplets_active)} total")
     
     def _safe_load_tensor(self, filepath: str) -> Dict[str, torch.Tensor]:
         if not os.path.exists(filepath):

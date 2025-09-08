@@ -104,6 +104,8 @@ class DataConfig:
     resample_train_samples: bool = False   # If True, regenerate fresh triplets at the start of each epoch
     resample_fraction: float = 1.0      # Fraction of train dataset to resample (0.0-1.0)
     resample_cadence: int = 1           # Resample every N epochs (e.g., 3 = every 3rd epoch starting from epoch 3)
+    resample_start_epoch: int = 1       # Epoch to start resampling (e.g., 3 = start resampling from epoch 3)
+    resample_schedule_override: Optional[Dict[int, float]] = None  # Override resampling for specific epochs {epoch: fraction}
     negative_mining: str = "none"       # Choose mining strategy: "none", "semi_hard", or "hard"
     negative_mining_start_epoch: int = 1  # Epoch to start negative mining (0 = from beginning)
     
