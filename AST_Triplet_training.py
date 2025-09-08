@@ -153,7 +153,6 @@ class ResampleCallback(TrainerCallback):
         if should_resample:
             try:
                 self.train_dataset.resample_for_new_epoch()
-                logger.info(f"[ResampleCallback] Regenerated triplets for epoch {current_epoch} (cadence={self.resample_cadence})")
             except Exception as e:
                 print(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
                 logger.warning(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
@@ -419,6 +418,15 @@ class ImprovedTripletFeatureDataset(TorchDataset):
         ".../techno/track123_chunk0.pt" -> "track123"
         """
         return Path(p).stem.rsplit("_chunk", 1)[0]
+    
+    def _get_subgenre_from_path(self, p: str) -> str:
+        """
+        Extracts the subgenre from a chunk filepath.
+
+        Example:
+        ".../precomputed_AST/techno/track123_chunk0.pt" -> "techno"
+        """
+        return Path(p).parent.name
 
 
     def _build_indices_from_triplets(self, triplets):
@@ -565,7 +573,10 @@ class ImprovedTripletFeatureDataset(TorchDataset):
             raise IndexError(f"Index {idx} out of range for dataset size {len(self.triplets_active)}")
         
         try:
-            anchor_path, positive_path, negative_path, subgenre = self.triplets_active[idx]
+            anchor_path, positive_path, negative_path, anchor_subgenre = self.triplets_active[idx]
+            
+            # Determine negative subgenre from path
+            negative_subgenre = self._get_subgenre_from_path(negative_path)
             
             # Load tensors with error handling
             anchor_input = self._safe_load_tensor(anchor_path)
@@ -577,7 +588,8 @@ class ImprovedTripletFeatureDataset(TorchDataset):
                 "positive_input": positive_input,
                 "negative_input": negative_input,
                 "labels": 0,  # Dummy label for compatibility
-                "subgenre": subgenre
+                "anchor_subgenre": anchor_subgenre,  # Anchor/positive subgenre
+                "negative_subgenre": negative_subgenre  # Negative subgenre
             }
             
         except Exception as e:
@@ -724,7 +736,8 @@ class FastSafeCollator:
                 "positive_input": self._stack_group(batch, "positive_input", do_full_validate),
                 "negative_input": self._stack_group(batch, "negative_input", do_full_validate),
                 "labels": torch.tensor([item["labels"] for item in batch], dtype=torch.long),
-                "subgenre": [item["subgenre"] for item in batch]
+                "anchor_subgenre": [item["anchor_subgenre"] for item in batch],
+                "negative_subgenre": [item["negative_subgenre"] for item in batch]
             }
             return out
 
@@ -854,7 +867,8 @@ class ImprovedASTTripletWrapper(nn.Module):
         positive_input: Dict,
         negative_input: Dict,
         labels: Optional[torch.Tensor] = None,
-        subgenre: Optional[List[str]] = None,
+        anchor_subgenre: Optional[List[str]] = None,
+        negative_subgenre: Optional[List[str]] = None,
     ) -> Dict[str, torch.Tensor]:
         """
         Forward pass for triplet learning with optional batch-wise negative mining.
@@ -891,18 +905,28 @@ class ImprovedASTTripletWrapper(nn.Module):
             # 3) Optional batch-wise mining (semi-hard / hard)
             #    We only attempt mining if:
             #      - config sets negative_mining to "semi_hard" or "hard"
+            #      - current epoch >= negative_mining_start_epoch
             #      - the collator passed subgenre labels for this batch
             #      - we're in training mode (not evaluation)
-            if self.negative_mining in {"semi_hard", "hard"} and subgenre is not None and self.training:
+            mining_start_epoch = getattr(self.config.data, "negative_mining_start_epoch", 1)
+            mining_enabled = (self.negative_mining in {"semi_hard", "hard"} and 
+                            self.current_epoch >= mining_start_epoch and
+                            anchor_subgenre is not None and 
+                            self.training)
+            
+            if mining_enabled:
                 try:
-                    mined = self._mine_within_batch(emb_anchor, emb_positive, subgenre)
+                    mined = self._mine_within_batch(emb_anchor, emb_positive, emb_negative, anchor_subgenre, negative_subgenre)
                     # mined is a tuple (d_ap, d_an) or (None, None) if mining couldn't run
                     if mined[0] is not None:
                         dist_ap, dist_an = mined
+                        logger.debug(f"[Mining] Applied {self.negative_mining} mining at epoch {self.current_epoch}")
                 except Exception as e:
                     # Safe fallback: keep default distances (dataset triplets)
                     print(f"[Mining] Mining failed, fallback to dataset triplets: {e}")
                     logger.warning(f"[Mining] Mining failed, fallback to dataset triplets: {e}")
+            elif self.negative_mining in {"semi_hard", "hard"} and self.current_epoch < mining_start_epoch:
+                logger.debug(f"[Mining] Skipping mining at epoch {self.current_epoch} (starts at epoch {mining_start_epoch})")
 
             # 4) Triplet loss with margin
             #    Enforce: d_an >= d_ap + margin  ->  relu(d_ap - d_an + m)
@@ -931,14 +955,16 @@ class ImprovedASTTripletWrapper(nn.Module):
             logger.error(f"[Forward] Forward pass failed: {e}")
             raise
         
-    def _mine_within_batch(self, emb_anchor, emb_positive, labels):
+    def _mine_within_batch(self, emb_anchor, emb_positive, emb_negative, anchor_subgenres, negative_subgenres):
         """
-        Perform batch-wise mining.
+        Perform batch-wise mining with full 3B candidate pool.
 
         Inputs:
         - emb_anchor: (B, D) anchor embeddings
-        - emb_positive: (B, D) positive embeddings (paired with anchors)
-        - labels: list of subgenre strings, length B
+        - emb_positive: (B, D) positive embeddings (paired with anchors)  
+        - emb_negative: (B, D) negative embeddings (paired with anchors)
+        - anchor_subgenres: list of anchor/positive subgenre strings, length B
+        - negative_subgenres: list of negative subgenre strings, length B
 
         Behavior:
         - Hardest positive: the positive sample in the batch with the same label
@@ -951,27 +977,34 @@ class ImprovedASTTripletWrapper(nn.Module):
         (d_ap, d_an) = per-sample distances (tensor length B),
         or (None, None) if mining not possible.
         """
-        if not labels or emb_anchor.size(0) != len(labels):
+        if not anchor_subgenres or emb_anchor.size(0) != len(anchor_subgenres):
+            return None, None
+        if not negative_subgenres or len(negative_subgenres) != len(anchor_subgenres):
             return None, None
 
         device = emb_anchor.device
         B = emb_anchor.size(0)
 
-        # Candidate pool = anchors + positives (so we can search across the batch)
-        emb_cand = torch.cat([emb_anchor, emb_positive], dim=0)
+        # Candidate pool = anchors + positives + negatives (3B total candidates)
+        emb_cand = torch.cat([emb_anchor, emb_positive, emb_negative], dim=0)
 
+        # Create combined label list: [anchor_labels, anchor_labels, negative_labels]
+        # Note: positives have same labels as anchors, negatives have their own labels
+        all_subgenres = anchor_subgenres + anchor_subgenres + negative_subgenres
+        
         # Convert labels to integers for mask building
-        uniq = {s: i for i, s in enumerate(sorted(set(labels)))}
-        y = torch.tensor([uniq[s] for s in labels], device=device)
-        y_cand = torch.cat([y, y], dim=0)
+        uniq = {s: i for i, s in enumerate(sorted(set(all_subgenres)))}
+        y_anchor = torch.tensor([uniq[s] for s in anchor_subgenres], device=device)
+        y_cand = torch.tensor([uniq[s] for s in all_subgenres], device=device)
 
-        # Distance matrix: (B, 2B)
+        # Distance matrix: (B, 3B)
         sim = torch.matmul(emb_anchor, emb_cand.T).clamp(-1, 1)
         D = 1.0 - sim
 
-        # Same-class mask
-        same = (y.unsqueeze(1) == y_cand.unsqueeze(0))
-        # Exclude trivial self matches
+        # Same-class mask (same subgenre as anchor)
+        same = (y_anchor.unsqueeze(1) == y_cand.unsqueeze(0))
+        
+        # Exclude trivial self matches (anchor[i] == anchor[i])
         eye = torch.zeros_like(D, dtype=torch.bool)
         eye[:, :B] = torch.eye(B, device=device, dtype=torch.bool)
         same = same & (~eye)
@@ -979,13 +1012,13 @@ class ImprovedASTTripletWrapper(nn.Module):
         if not same.any():
             return None, None
 
-        # Hardest positive: max distance among same-class
+        # Hardest positive: max distance among same-class candidates
         D_pos = D.clone()
         D_pos[~same] = -float("inf")
         pos_idx = D_pos.argmax(dim=1)
         d_ap = D.gather(1, pos_idx.unsqueeze(1)).squeeze(1)
 
-        # Negatives = different-class
+        # Negatives = different-class candidates
         diff = ~same
         if self.negative_mining == "semi_hard":
             # Semi-hard negatives: farther than positive but as close as possible
@@ -995,13 +1028,13 @@ class ImprovedASTTripletWrapper(nn.Module):
             neg_idx = D_neg.argmin(dim=1)
             no_semi = torch.isinf(D_neg.gather(1, neg_idx.unsqueeze(1)).squeeze(1))
             if no_semi.any():
-                # Fallback: hard negatives (closest overall)
+                # Fallback: hard negatives (closest different-class)
                 D_hard = D.clone()
                 D_hard[~diff] = float("inf")
                 hard_idx = D_hard.argmin(dim=1)
                 neg_idx = torch.where(no_semi, hard_idx, neg_idx)
         else:
-            # Hard negatives directly
+            # Hard negatives directly (closest different-class)
             D_hard = D.clone()
             D_hard[~diff] = float("inf")
             neg_idx = D_hard.argmin(dim=1)
@@ -1249,34 +1282,41 @@ def _generate_triplets_from_tracks(subgenre_tracks: Dict[str, Dict[str, List[str
 
 
 def save_model_and_artifacts(model: ImprovedASTTripletWrapper, config: ExperimentConfig,
-                           train_data: Any, test_data: Any) -> str:
+                           train_data: Any, test_data: Any, timestamp: str) -> str:
     """Save model, configuration, and metadata with error handling."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_dir = Path(f"fully_trained_models_{timestamp}")
-    save_dir.mkdir(exist_ok=True)
+    save_dir = Path(f"run_{timestamp}")
+    # Directory should already exist, created during training setup
+    if not save_dir.exists():
+        save_dir.mkdir(exist_ok=True)
     
     try:
-        # Save model weights
+        # Save model weights directly in run directory
         model_path = save_dir / "model.safetensors"
         save_file(model.state_dict(), model_path)
         logger.info(f"Model saved to {model_path}")
         
-        # Save configuration
+        # Save configuration directly in run directory
         config_path = save_dir / "config.json"
         config.save(config_path)
         logger.info(f"Configuration saved to {config_path}")
         
-        # Save split information
+        # Save split information directly in run directory
         splits_path = save_dir / "splits.json"
         splits_data = {
             "train_split": train_data,
             "test_split": test_data,
-            "timestamp": timestamp
+            "timestamp": timestamp,
+            "config_summary": {
+                "experiment_name": config.experiment_name,
+                "chunks_dir": config.data.chunks_dir,
+                "test_split_ratio": config.data.test_split_ratio
+            }
         }
         with open(splits_path, 'w') as f:
             json.dump(splits_data, f, indent=2)
+        logger.info(f"Splits saved to {splits_path}")
         
-        logger.info(f"Training artifacts saved to {save_dir}")
+        logger.info(f"All training artifacts saved to {save_dir}")
         return str(save_dir)
         
     except Exception as e:
@@ -1405,26 +1445,14 @@ def main():
         logger.info("Loading data splits...")
         train_data, test_data = load_split_data(config)
         
-        # Save splits immediately to preserve split information
-        logger.info("Saving train/test splits...")
+        # Store splits data to be saved later with model artifacts
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        splits_dir = Path(f"splits_{timestamp}")
-        splits_dir.mkdir(exist_ok=True)
         
-        splits_path = splits_dir / "splits.json"
-        splits_data = {
-            "train_split": train_data,
-            "test_split": test_data,
-            "timestamp": timestamp,
-            "config_summary": {
-                "experiment_name": config.experiment_name,
-                "chunks_dir": config.data.chunks_dir,
-                "test_split_ratio": config.data.test_split_ratio
-            }
-        }
-        with open(splits_path, 'w') as f:
-            json.dump(splits_data, f, indent=2)
-        logger.info(f"Splits saved to {splits_path}")
+        # Create main run directory and checkpoints subdirectory for trainer
+        run_dir = Path(f"run_{timestamp}")
+        run_dir.mkdir(exist_ok=True)
+        checkpoints_dir = run_dir / "checkpoints"
+        checkpoints_dir.mkdir(exist_ok=True)
         
         # Create datasets
         logger.info("Creating datasets...")
@@ -1449,7 +1477,8 @@ def main():
         
         # Setup training arguments with clean logging
         training_args_dict = {
-            "output_dir": config.paths.model_output_dir,
+            "output_dir": str(checkpoints_dir),
+            "logging_strategy": config.training.logging_strategy,
             "eval_strategy": config.training.eval_strategy,
             "save_strategy": config.training.save_strategy,
             "learning_rate": config.training.learning_rate,
@@ -1557,7 +1586,7 @@ def main():
         
         # Save model and artifacts
         logger.info("Saving model and artifacts...")
-        save_dir = save_model_and_artifacts(model, config, train_data, test_data)
+        save_dir = save_model_and_artifacts(model, config, train_data, test_data, timestamp)
         
         logger.info(f"Training completed successfully! Results saved to: {save_dir}")
         

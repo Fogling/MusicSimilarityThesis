@@ -51,10 +51,11 @@ class TrainingConfig:
     prefetch_factor: int = 2
     persistent_workers: bool = True
     
-    # Training strategy
+    # Logging, Eval and safe strategy
+    logging_strategy: str = "epoch"
+    logging_steps: int = 50
     eval_strategy: str = "epoch"
     save_strategy: str = "no"
-    logging_steps: int = 50
     save_steps: Optional[int] = None
     eval_steps: Optional[int] = None
     
@@ -104,6 +105,7 @@ class DataConfig:
     resample_fraction: float = 1.0      # Fraction of train dataset to resample (0.0-1.0)
     resample_cadence: int = 1           # Resample every N epochs (e.g., 3 = every 3rd epoch starting from epoch 3)
     negative_mining: str = "none"       # Choose mining strategy: "none", "semi_hard", or "hard"
+    negative_mining_start_epoch: int = 1  # Epoch to start negative mining (0 = from beginning)
     
     # Stratified batching configuration  
     stratified_batching: bool = False      # Enable balanced subgenre representation per batch

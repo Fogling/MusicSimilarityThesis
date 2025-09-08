@@ -13,7 +13,7 @@
 set -euo pipefail
 
 ######### EDIT THESE #########
-ARCHIVE="$HOME/thesis/precomputed_AST.zip"          # .zip or .tar.gz both ok
+ARCHIVE="$HOME/thesis/precomputed_AST_7G.zip"          # .zip or .tar.gz both ok
 CONFIG_JSON="$HOME/thesis/train_from_precomputed_A40.json"
 TRAIN_PY="$HOME/thesis/AST_Triplet_training.py"
 OUT_BASE="$HOME/thesis/runs"                        # where results will be copied
