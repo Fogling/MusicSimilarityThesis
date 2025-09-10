@@ -5,9 +5,7 @@
 #SBATCH --cpus-per-gpu=14
 #SBATCH --mem=64G
 #SBATCH --tmp=100G
-#SBATCH --time=2-00:00:00
-#SBATCH --mail-type=ALL 
-#SBATCH --mail-user=nnebeling
+#SBATCH --time=1-00:00:00
 
 #exit on error or undef variables
 set -euo pipefail
@@ -66,15 +64,22 @@ echo "[INFO] Collecting artifacts to ${RUN_DIR} ..."
 # trainer outputs (if any), split info, final model folders, logs
 shopt -s nullglob
 for p in \
-  fully_trained_models_* \
-  splits_* \
-  ast_triplet_output \
-  logs \
+  run_* \
   *.log
 do
   if [[ -e "$p" ]]; then
     echo "  -> copying $p"
     cp -r "$p" "${RUN_DIR}/"
+  fi
+done
+
+# Only copy ast_triplet_output and logs if they contain files
+for p in ast_triplet_output logs; do
+  if [[ -d "$p" ]] && [[ -n "$(find "$p" -type f 2>/dev/null)" ]]; then
+    echo "  -> copying $p (non-empty)"
+    cp -r "$p" "${RUN_DIR}/"
+  elif [[ -d "$p" ]]; then
+    echo "  -> skipping $p (empty directory)"
   fi
 done
 shopt -u nullglob
