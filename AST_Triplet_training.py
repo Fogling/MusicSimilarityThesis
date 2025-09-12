@@ -17,6 +17,7 @@ import json
 import logging
 import random
 import argparse
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any, Union
@@ -80,9 +81,12 @@ class CleanLoggingCallback(TrainerCallback):
         self.last_logged_step = -1
         self.last_logged_epoch = -1
         self.total_steps = None
+        self.training_start_time = None
     
     def on_train_begin(self, args, state, control, **kwargs):
-        """Called at the beginning of training to capture total steps."""
+        """Called at the beginning of training to capture total steps and start time."""
+        self.training_start_time = time.perf_counter()
+        
         # Calculate total steps from epochs and batch size since max_steps might not be set
         if args.num_train_epochs and args.per_device_train_batch_size:
             # Get dataset size from kwargs if available
@@ -96,6 +100,8 @@ class CleanLoggingCallback(TrainerCallback):
         elif state.max_steps and state.max_steps > 0:
             self.total_steps = state.max_steps
             logger.info(f"Training will run for {self.total_steps} total steps")
+        
+        logger.info("Training started at " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     
     def on_log(self, args, state, control, logs=None, **kwargs):
         """Called whenever logging occurs - only customize evaluation logs."""
@@ -110,15 +116,28 @@ class CleanLoggingCallback(TrainerCallback):
             
             # Only log evaluation once per epoch to avoid duplicates
             if current_epoch != self.last_logged_epoch:
+                # Calculate elapsed time and estimate remaining time
+                elapsed_time = time.perf_counter() - self.training_start_time if self.training_start_time else 0
+                
                 # Format step info with progress if total steps is known
                 if self.total_steps:
                     step_info = f"Step {current_step}/{self.total_steps} ({current_step/self.total_steps*100:.1f}%)"
+                    
+                    # Estimate remaining time based on current progress
+                    if current_step > 0:
+                        estimated_total_time = elapsed_time * self.total_steps / current_step
+                        remaining_time = max(0, estimated_total_time - elapsed_time)
+                        time_info = f"Elapsed: {self._format_time(elapsed_time)}, ETA: {self._format_time(remaining_time)}"
+                    else:
+                        time_info = f"Elapsed: {self._format_time(elapsed_time)}"
                 else:
                     step_info = f"Step {current_step}"
+                    time_info = f"Elapsed: {self._format_time(elapsed_time)}"
                 
                 logger.info(f"Evaluation - Epoch {current_epoch}, {step_info}: "
                            f"eval_loss={logs['eval_loss']:.4f}, "
-                           f"eval_accuracy={logs.get('eval_accuracy', 0):.3f}")
+                           f"eval_accuracy={logs.get('eval_accuracy', 0):.3f}, "
+                           f"{time_info}")
                 self.last_logged_epoch = current_epoch
                 
                 # Only remove evaluation metrics, keep other important logs for trainer
@@ -126,6 +145,27 @@ class CleanLoggingCallback(TrainerCallback):
                 for key in eval_keys_to_remove:
                     if key not in ['eval_loss', 'eval_accuracy']:  # Keep the main metrics
                         logs.pop(key, None)
+    
+    def on_train_end(self, args, state, control, **kwargs):
+        """Called at the end of training to log total time."""
+        if self.training_start_time:
+            total_training_time = time.perf_counter() - self.training_start_time
+            logger.info(f"Training completed! Total training time: {self._format_time(total_training_time)}")
+            logger.info("Training ended at " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    
+    def _format_time(self, seconds):
+        """Format seconds into a readable time string."""
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = seconds % 60
+            return f"{minutes}m {secs:.1f}s"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            secs = seconds % 60
+            return f"{hours}h {minutes}m {secs:.1f}s"
 
 class ResampleCallback(TrainerCallback):
     """
@@ -179,6 +219,141 @@ class ResampleCallback(TrainerCallback):
                 logger.warning(f"[ResampleCallback] resample_for_new_epoch failed: {e}")
         else:
             logger.debug(f"[ResampleCallback] Epoch {current_epoch}: No resampling (cadence={self.resample_cadence}, start_epoch={resample_start_epoch})")
+
+
+class EarlyStoppingCallback(TrainerCallback):
+    """
+    Early stopping callback that is aware of resampling operations.
+    
+    This callback monitors eval_accuracy and stops training when no improvement
+    is observed for a specified number of epochs. It includes special handling
+    for resampling scenarios where temporary accuracy drops are expected.
+    
+    Features:
+    - Patience-based early stopping on eval_accuracy
+    - Resampling-aware: suspends early stopping for grace period after resampling
+    - Configurable minimum improvement threshold to avoid stopping on noise
+    - Detailed logging of early stopping decisions
+    """
+    
+    def __init__(self, config: ExperimentConfig, resample_callback: Optional[ResampleCallback] = None):
+        """
+        Initialize early stopping callback.
+        
+        Args:
+            config: Experiment configuration containing early stopping parameters
+            resample_callback: Optional reference to resample callback to track resampling events
+        """
+        self.enabled = config.training.enable_early_stopping
+        self.patience = config.training.early_stopping_patience
+        self.min_delta = config.training.early_stopping_min_delta
+        self.post_resample_grace_epochs = config.training.post_resample_grace_epochs
+        
+        # State tracking
+        self.best_accuracy = -float('inf')
+        self.epochs_without_improvement = 0
+        self.last_resample_epoch = -1
+        self.resample_callback = resample_callback
+        self.stopped_early = False
+        
+        if self.enabled:
+            logger.info(f"Early stopping enabled: patience={self.patience}, min_delta={self.min_delta}, "
+                       f"post_resample_grace={self.post_resample_grace_epochs}")
+        else:
+            logger.info("Early stopping disabled")
+    
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        """Track resampling events by monitoring the resample callback."""
+        if not self.enabled:
+            return
+            
+        current_epoch = int(state.epoch) if state.epoch is not None else 0
+        
+        # Check if resampling occurred in this epoch by checking resample callback
+        if (self.resample_callback and 
+            hasattr(self.resample_callback, 'enabled') and 
+            self.resample_callback.enabled):
+            
+            # Check if this epoch triggers resampling based on callback logic
+            resample_start_epoch = getattr(self.resample_callback.config.data, "resample_start_epoch", 1)
+            resample_cadence = getattr(self.resample_callback.config.data, "resample_cadence", 1)
+            resample_schedule_override = getattr(self.resample_callback.config.data, "resample_schedule_override", None)
+            
+            # Same logic as ResampleCallback to detect resampling
+            resampling_this_epoch = False
+            if current_epoch >= resample_start_epoch:
+                if resample_schedule_override and current_epoch in resample_schedule_override:
+                    resampling_this_epoch = True
+                else:
+                    epochs_since_start = current_epoch - resample_start_epoch
+                    resampling_this_epoch = (epochs_since_start % resample_cadence == 0) and (epochs_since_start >= 0)
+            
+            if resampling_this_epoch:
+                self.last_resample_epoch = current_epoch
+                logger.info(f"[EarlyStopping] Detected resampling at epoch {current_epoch}, "
+                           f"setting grace period of {self.post_resample_grace_epochs} epochs")
+    
+    def on_evaluate(self, args, state, control, logs=None, **kwargs):
+        """
+        Monitor evaluation metrics and trigger early stopping if conditions are met.
+        
+        Args:
+            args: Training arguments
+            state: Trainer state
+            control: Training control
+            logs: Dictionary containing evaluation metrics
+        """
+        if not self.enabled or logs is None:
+            return
+        
+        current_epoch = int(state.epoch) if state.epoch is not None else 0
+        eval_accuracy = logs.get('eval_accuracy', 0)
+        
+        # Check if we're in grace period after resampling
+        epochs_since_resample = current_epoch - self.last_resample_epoch
+        in_grace_period = (self.last_resample_epoch >= 0 and 
+                          epochs_since_resample <= self.post_resample_grace_epochs)
+        
+        # Update best accuracy and patience counter
+        improvement = eval_accuracy - self.best_accuracy
+        if improvement > self.min_delta:
+            self.best_accuracy = eval_accuracy
+            self.epochs_without_improvement = 0
+            logger.info(f"[EarlyStopping] New best accuracy: {eval_accuracy:.4f} "
+                       f"(+{improvement:.4f}) at epoch {current_epoch}")
+        else:
+            self.epochs_without_improvement += 1
+            logger.debug(f"[EarlyStopping] No improvement: {self.epochs_without_improvement}/{self.patience} "
+                        f"(current: {eval_accuracy:.4f}, best: {self.best_accuracy:.4f})")
+        
+        # Early stopping decision logic
+        should_stop = (self.epochs_without_improvement >= self.patience and 
+                      not in_grace_period)
+        
+        if should_stop:
+            logger.info(f"[EarlyStopping] Stopping training: no improvement for {self.patience} epochs "
+                       f"(best accuracy: {self.best_accuracy:.4f} at epoch {current_epoch - self.epochs_without_improvement})")
+            control.should_training_stop = True
+            self.stopped_early = True
+            
+        elif self.epochs_without_improvement >= self.patience and in_grace_period:
+            logger.info(f"[EarlyStopping] Would stop training, but in grace period "
+                       f"({epochs_since_resample}/{self.post_resample_grace_epochs} epochs since resampling)")
+        
+        # Log current status every few epochs for visibility
+        if current_epoch % 3 == 0 or self.epochs_without_improvement >= self.patience - 1:
+            grace_status = f" (in grace period: {epochs_since_resample}/{self.post_resample_grace_epochs})" if in_grace_period else ""
+            logger.info(f"[EarlyStopping] Status: {self.epochs_without_improvement}/{self.patience} epochs without improvement{grace_status}")
+    
+    def on_train_end(self, args, state, control, **kwargs):
+        """Log final early stopping status."""
+        if not self.enabled:
+            return
+            
+        if self.stopped_early:
+            logger.info(f"[EarlyStopping] Training stopped early with best accuracy: {self.best_accuracy:.4f}")
+        else:
+            logger.info(f"[EarlyStopping] Training completed normally with final best accuracy: {self.best_accuracy:.4f}")
 
 
 class StratifiedSubgenreBatchSampler:
@@ -1544,10 +1719,13 @@ def main():
         training_args = TrainingArguments(**training_args_dict)
         
         resample_flag = bool(getattr(config.data, "resample_train_samples", False))
+        resample_callback = ResampleCallback(train_dataset, config, enabled=resample_flag)
+        
         callbacks = [
             CleanLoggingCallback(), 
-            ResampleCallback(train_dataset, config, enabled=resample_flag),
-            MarginSchedulingCallback(model)
+            resample_callback,
+            MarginSchedulingCallback(model),
+            EarlyStoppingCallback(config, resample_callback)
         ]
         
         # Create custom LR scheduler if using sophisticated scheduling
@@ -1608,13 +1786,30 @@ def main():
         
         # Start training
         logger.info("Starting training...")
+        main_start_time = time.perf_counter()
         trainer.train()
+        main_end_time = time.perf_counter()
         
         # Save model and artifacts
         logger.info("Saving model and artifacts...")
         save_dir = save_model_and_artifacts(model, config, train_data, test_data, timestamp)
         
-        logger.info(f"Training completed successfully! Results saved to: {save_dir}")
+        # Calculate and log total execution time (including setup and saving)
+        total_execution_time = main_end_time - main_start_time
+        def format_time_simple(seconds):
+            if seconds < 60:
+                return f"{seconds:.1f}s"
+            elif seconds < 3600:
+                minutes = int(seconds // 60)
+                secs = seconds % 60
+                return f"{minutes}m {secs:.1f}s"
+            else:
+                hours = int(seconds // 3600)
+                minutes = int((seconds % 3600) // 60)
+                secs = seconds % 60
+                return f"{hours}h {minutes}m {secs:.1f}s"
+        
+        logger.info(f"Training completed successfully! Training time: {format_time_simple(total_execution_time)} | Results saved to: {save_dir}")
         
     except KeyboardInterrupt:
         logger.info("Training interrupted by user")

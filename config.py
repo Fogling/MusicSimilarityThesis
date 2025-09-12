@@ -65,6 +65,12 @@ class TrainingConfig:
     # Progress bars
     disable_tqdm: bool = True  # Disable tqdm progress bars (useful for cluster/batch jobs)
     
+    # Early stopping configuration
+    enable_early_stopping: bool = False  # Enable early stopping based on eval_accuracy
+    early_stopping_patience: int = 5  # Number of epochs without improvement before stopping
+    early_stopping_min_delta: float = 0.001  # Minimum improvement threshold to reset patience
+    post_resample_grace_epochs: int = 2  # Grace period after resampling before early stopping can trigger
+
     # GPU configuration
     force_single_gpu: bool = False  # Force single GPU mode even with multiple GPUs available
 
@@ -91,7 +97,7 @@ class TrainingConfig:
 @dataclass
 class DataConfig:
     """Data processing configuration."""
-    chunks_dir: str = "WAV"
+    chunks_dir: str = "Precomputed_AST_7G"
     split_file_train: Optional[str] = None
     split_file_test: Optional[str] = None
     test_split_ratio: float = 0.1
