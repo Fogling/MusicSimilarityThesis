@@ -985,11 +985,24 @@ class ImprovedASTTripletWrapper(nn.Module):
         
     
     def _build_projection_head(self) -> nn.Module:
-        """Build configurable projection head."""
-        hidden_sizes = self.config.model.hidden_sizes
+        """
+        Build MLP projection head for triplet learning.
+
+        Architecture: AST(768D) -> [hidden_layers] -> output_dim(128D)
+        Example: projection_hidden_layers=[512] creates: 768->512->128
+
+        Returns:
+            nn.Module: MLP projection head with L2 normalization applied in forward()
+        """
+        # Use new configuration format, with fallback to legacy
+        hidden_layers = self.config.model.projection_hidden_layers
+        activation_name = self.config.model.projection_activation
+        dropout_rate = self.config.model.projection_dropout_rate
         output_dim = self.config.model.output_dim
-        dropout_rate = self.config.model.dropout_rate
-        
+
+        # AST output dimension (from pretrained model)
+        ast_output_dim = self.ast.config.hidden_size  # 768 for MIT AST
+
         # Get activation function
         activation_map = {
             'relu': nn.ReLU(),
@@ -997,26 +1010,45 @@ class ImprovedASTTripletWrapper(nn.Module):
             'tanh': nn.Tanh(),
             'leaky_relu': nn.LeakyReLU()
         }
-        activation = activation_map.get(
-            self.config.model.activation.lower(), 
-            nn.ReLU()
-        )
-        
+        activation = activation_map.get(activation_name.lower(), nn.ReLU())
+
+        # Build layers
         layers = []
-        input_size = self.ast.config.hidden_size
-        
-        for hidden_size in hidden_sizes[:-1]:
+        current_dim = ast_output_dim
+
+        # Add hidden layers
+        for hidden_dim in hidden_layers:
             layers.extend([
-                nn.Linear(input_size, hidden_size),
+                nn.Linear(current_dim, hidden_dim),
                 activation,
                 nn.Dropout(dropout_rate) if dropout_rate > 0 else nn.Identity()
             ])
-            input_size = hidden_size
-        
-        # Final layer
-        layers.append(nn.Linear(input_size, output_dim))
-        
+            current_dim = hidden_dim
+
+        # Add final projection layer (no activation, L2 norm applied in forward)
+        layers.append(nn.Linear(current_dim, output_dim))
+
+        # Log the architecture for clarity
+        arch_str = f"{ast_output_dim}"
+        for hidden_dim in hidden_layers:
+            arch_str += f" -> {hidden_dim}"
+        arch_str += f" -> {output_dim}"
+
+        logger.info(f"MLP Projection Head Architecture: {arch_str}")
+        logger.info(f"  Activation: {activation_name}, Dropout: {dropout_rate}")
+        logger.info(f"  Total parameters: {self._count_projection_params(layers):,}")
+
         return nn.Sequential(*layers)
+
+    def _count_projection_params(self, layers: List[nn.Module]) -> int:
+        """Count parameters in projection head layers."""
+        total_params = 0
+        for layer in layers:
+            if hasattr(layer, 'weight'):
+                total_params += layer.weight.numel()
+                if hasattr(layer, 'bias') and layer.bias is not None:
+                    total_params += layer.bias.numel()
+        return total_params
     
     def set_epoch(self, epoch: int):
         """Set current epoch for margin scheduling."""

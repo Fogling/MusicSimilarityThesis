@@ -14,14 +14,41 @@ from typing import Optional, Dict, Any, List
 class ModelConfig:
     """Model architecture configuration."""
     pretrained_model: str = "MIT/ast-finetuned-audioset-10-10-0.4593"
-    hidden_sizes: List[int] = None
-    activation: str = "relu"
-    dropout_rate: float = 0.0
-    output_dim: int = 128
-    
+
+    # MLP Projection Head Configuration
+    # Architecture: AST(768D) -> hidden_layers -> output_dim
+    # Example: [512] creates: 768->512->128 (if output_dim=128)
+    projection_hidden_layers: List[int] = None
+    projection_activation: str = "relu"
+    projection_dropout_rate: float = 0.0
+    output_dim: int = 128  # Final embedding dimension
+
+    # Legacy support (will be deprecated)
+    hidden_sizes: List[int] = None  # For backward compatibility
+    activation: str = "relu"        # For backward compatibility
+    dropout_rate: float = 0.0       # For backward compatibility
+
     def __post_init__(self):
-        if self.hidden_sizes is None:
-            self.hidden_sizes = [512, 128]
+        # Handle legacy configuration first
+        if self.hidden_sizes is not None:
+            # Convert legacy format: [512, 128] -> projection_hidden_layers=[512]
+            # The last element in hidden_sizes was never actually used as hidden layer
+            if len(self.hidden_sizes) > 1:
+                legacy_hidden_layers = self.hidden_sizes[:-1]
+            else:
+                legacy_hidden_layers = self.hidden_sizes
+
+            # Only override if new format not explicitly set
+            if self.projection_hidden_layers is None:
+                self.projection_hidden_layers = legacy_hidden_layers
+            if self.projection_activation == "relu" and self.activation != "relu":
+                self.projection_activation = self.activation
+            if self.projection_dropout_rate == 0.0 and self.dropout_rate != 0.0:
+                self.projection_dropout_rate = self.dropout_rate
+
+        # Set defaults if still not specified
+        if self.projection_hidden_layers is None:
+            self.projection_hidden_layers = [512]  # Default: 768->512->128
 
 
 @dataclass
@@ -128,18 +155,6 @@ class DataConfig:
     legacy_split_dir: Optional[str] = None
 
 
-@dataclass
-class PathConfig:
-    """Path configuration."""
-    model_output_dir: str = "ast_triplet_output"
-    log_dir: str = "logs"
-    checkpoint_dir: Optional[str] = None
-    
-    def __post_init__(self):
-        """Create directories if they don't exist."""
-        for dir_path in [self.model_output_dir, self.log_dir]:
-            if dir_path:
-                Path(dir_path).mkdir(exist_ok=True)
 
 
 @dataclass
@@ -148,23 +163,20 @@ class ExperimentConfig:
     model: ModelConfig
     training: TrainingConfig
     data: DataConfig
-    paths: PathConfig
     
     # Experiment metadata
     experiment_name: str = "ast_triplet_training"
     description: str = ""
     
-    def __init__(self, 
+    def __init__(self,
                  model: Optional[ModelConfig] = None,
                  training: Optional[TrainingConfig] = None,
                  data: Optional[DataConfig] = None,
-                 paths: Optional[PathConfig] = None,
                  **kwargs):
         """Initialize with optional component configs."""
         self.model = model or ModelConfig()
         self.training = training or TrainingConfig()
         self.data = data or DataConfig()
-        self.paths = paths or PathConfig()
         
         # Set any additional attributes
         for key, value in kwargs.items():
@@ -187,9 +199,10 @@ class ExperimentConfig:
         model = ModelConfig(**config_dict.pop('model', {}))
         training = TrainingConfig(**config_dict.pop('training', {}))
         data = DataConfig(**config_dict.pop('data', {}))
-        paths = PathConfig(**config_dict.pop('paths', {}))
-        
-        return cls(model=model, training=training, data=data, paths=paths, **config_dict)
+        # Remove paths field if present (backward compatibility)
+        config_dict.pop('paths', None)
+
+        return cls(model=model, training=training, data=data, **config_dict)
     
     def validate(self) -> None:
         """Validate the complete configuration."""
