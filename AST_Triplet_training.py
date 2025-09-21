@@ -1691,7 +1691,25 @@ def main():
         logger.info("Creating datasets...")
         train_dataset = ImprovedTripletFeatureDataset(train_data, config, split_name="train")
         test_dataset  = ImprovedTripletFeatureDataset(test_data,  config, split_name="test")
-        
+
+        # Apply augmentations if enabled
+        if config.data.enable_augmentations:
+            logger.info("Augmentations enabled - wrapping datasets...")
+            from dataset_augmented import AugmentedTripletFeatureDataset
+
+            # Wrap train dataset with augmentations
+            train_dataset = AugmentedTripletFeatureDataset(
+                base_dataset=train_dataset,
+                config=config,
+                split_name="train"
+            )
+
+            # Test dataset gets no augmentations (keep original)
+            logger.info("Train dataset: augmentations ENABLED")
+            logger.info("Test dataset: augmentations DISABLED")
+        else:
+            logger.info("Augmentations disabled - using original datasets")
+
         # Initialize model
         logger.info("Initializing model...")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

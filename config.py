@@ -154,7 +154,30 @@ class DataConfig:
     use_legacy_splits: bool = False
     legacy_split_dir: Optional[str] = None
 
+    # Audio augmentation configuration
+    enable_augmentations: bool = False  # Global augmentation enable/disable
+    augmentation_probability: float = 0.5  # Probability of applying augmentations
+    use_2d_augmentations: bool = True  # Enable 2D spectrogram augmentations
 
+    # Spectrogram augmentation parameters
+    aug_time_mask_prob: float = 0.2
+    aug_time_mask_max_length: int = 15
+    aug_freq_mask_prob: float = 0.2
+    aug_freq_mask_max_length: int = 12
+    aug_noise_prob: float = 0.3
+    aug_noise_std: float = 0.03
+    aug_volume_prob: float = 0.3
+    aug_volume_range: tuple = (0.9, 1.1)
+    aug_temporal_shift_prob: float = 0.2
+    aug_temporal_shift_max: int = 3
+
+    # 2D spectrogram augmentation parameters
+    aug_2d_freq_mask_prob: float = 0.3
+    aug_2d_freq_mask_max: int = 12
+    aug_2d_time_mask_prob: float = 0.3
+    aug_2d_time_mask_max: int = 15
+    aug_2d_num_freq_masks: int = 1
+    aug_2d_num_time_masks: int = 1
 
 
 @dataclass
