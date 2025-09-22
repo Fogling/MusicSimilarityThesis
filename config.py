@@ -179,6 +179,12 @@ class DataConfig:
     aug_2d_num_freq_masks: int = 1
     aug_2d_num_time_masks: int = 1
 
+    # K-Fold cross-validation configuration
+    enable_kfold: bool = False  # Enable K-fold cross-validation
+    kfold_k: int = 5  # Number of folds (default: 5)
+    kfold_partitions_file: Optional[str] = None  # Pre-computed partitions file
+    kfold_current_fold: Optional[int] = None  # Current fold index (0 to k-1) when running single fold
+
 
 @dataclass
 class ExperimentConfig:

@@ -3,9 +3,9 @@
 #SBATCH --job-name=ast-a40
 #SBATCH --gres=gpu:a40:1
 #SBATCH --cpus-per-gpu=12
-#SBATCH --mem=64G
+#SBATCH --mem=100G
 #SBATCH --tmp=75G
-#SBATCH --time=12:00:00
+#SBATCH --time=1-00:00:00
 
 #exit on error or undef variables
 set -euo pipefail
@@ -13,7 +13,7 @@ set -euo pipefail
 ######### EDIT THESE #########
 ARCHIVE="$HOME/thesis/precomputed_7G_2Chunk.zip"          # .zip or .tar.gz both ok
 CONFIG_JSON="$HOME/thesis/$1"
-TRAIN_PY="$HOME/thesis/AST_Triplet_training.py"
+TRAIN_PY="$HOME/thesis/AST_Triplet_kfold.py"
 OUT_BASE="$HOME/thesis/runs"                        # where results will be copied
 ################################
 

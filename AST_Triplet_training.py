@@ -1329,27 +1329,61 @@ def compute_metrics(eval_pred) -> Dict[str, float]:
 def load_split_data(config: ExperimentConfig) -> Tuple[List, List]:
     """Load train/test splits with support for both old and new formats."""
     data_config = config.data
-    
+
+    # Check if K-fold mode is enabled and we're running a specific fold
+    if data_config.enable_kfold and data_config.kfold_current_fold is not None:
+        return load_kfold_split_data(config)
+
     # Try new format first
     if data_config.split_file_train and data_config.split_file_test:
         logger.info("Loading splits from specified files")
-        
+
         try:
             with open(data_config.split_file_train, 'r') as f:
                 train_data = json.load(f)
             with open(data_config.split_file_test, 'r') as f:
                 test_data = json.load(f)
-            
+
             logger.info(f"Loaded train/test splits from files")
             return train_data, test_data
-            
+
         except Exception as e:
             logger.error(f"Error loading split files: {e}")
             raise
-    
+
     # Fallback to generating splits
     logger.info("Generating train/test splits from preprocessed features")
     return generate_triplet_splits(config)
+
+
+def load_kfold_split_data(config: ExperimentConfig) -> Tuple[List, List]:
+    """Load train/test splits for a specific K-fold iteration."""
+    from kfold_utils import load_kfold_partitions, get_fold_splits, generate_kfold_triplet_splits
+
+    data_config = config.data
+    fold_idx = data_config.kfold_current_fold
+    k = data_config.kfold_k
+
+    logger.info(f"Loading K-fold data for fold {fold_idx}/{k-1}")
+
+    # Load or create partitions
+    if data_config.kfold_partitions_file and Path(data_config.kfold_partitions_file).exists():
+        logger.info(f"Loading existing K-fold partitions from {data_config.kfold_partitions_file}")
+        kfold_partitions = load_kfold_partitions(data_config.kfold_partitions_file)
+    else:
+        logger.info("Creating new K-fold partitions")
+        from kfold_utils import create_kfold_partitions
+        kfold_partitions = create_kfold_partitions(config, k=k)
+
+    # Get train/test track splits for this fold
+    train_tracks, test_tracks = get_fold_splits(kfold_partitions, fold_idx, k=k)
+
+    # Generate triplets for this fold
+    train_triplets, test_triplets = generate_kfold_triplet_splits(
+        train_tracks, test_tracks, config, fold_idx
+    )
+
+    return train_triplets, test_triplets
 
 
 def generate_triplet_splits(config: ExperimentConfig) -> Tuple[List, List]:
@@ -1873,6 +1907,393 @@ def main():
         return 1
     
     return 0
+
+
+def run_kfold_training(base_config: ExperimentConfig, k: int = 5, output_dir: str = "kfold_results") -> Dict[str, Any]:
+    """
+    Run complete K-fold cross-validation training with full training history capture.
+
+    Args:
+        base_config: Base experiment configuration
+        k: Number of folds
+        output_dir: Directory to save results
+
+    Returns:
+        Dictionary with aggregated results and statistics
+    """
+    from datetime import datetime
+    from kfold_utils import create_kfold_partitions, save_kfold_partitions
+    import numpy as np
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_dir = Path(output_dir) / f"kfold_{timestamp}"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"\n{'='*80}")
+    logger.info(f"STARTING {k}-FOLD CROSS-VALIDATION EXPERIMENT")
+    logger.info(f"Results directory: {results_dir}")
+    logger.info(f"{'='*80}")
+
+    # Create K-fold partitions
+    logger.info("Creating K-fold partitions...")
+    kfold_partitions = create_kfold_partitions(base_config, k=k)
+
+    # Save partitions for reproducibility
+    partitions_file = results_dir / "kfold_partitions.json"
+    save_kfold_partitions(kfold_partitions, str(partitions_file), base_config)
+
+    # Save base configuration
+    base_config_file = results_dir / "base_config.json"
+    base_config.save(str(base_config_file))
+
+    fold_metrics = []
+
+    # Run training for each fold
+    for fold_idx in range(k):
+        logger.info(f"\n{'='*60}")
+        logger.info(f"TRAINING FOLD {fold_idx + 1}/{k}")
+        logger.info(f"{'='*60}")
+
+        # Create fold-specific config
+        fold_config = ExperimentConfig.load(str(base_config_file))
+        fold_config.training.seed = base_config.training.seed + fold_idx
+        fold_config.experiment_name = f"{base_config.experiment_name}_fold_{fold_idx}"
+        fold_config.description = f"Fold {fold_idx + 1}/{k} of K-fold cross-validation"
+
+        # Enable K-fold mode and set current fold
+        fold_config.data.enable_kfold = True
+        fold_config.data.kfold_k = k
+        fold_config.data.kfold_current_fold = fold_idx
+        fold_config.data.kfold_partitions_file = str(partitions_file)
+
+        # Create fold directory
+        fold_dir = results_dir / f"fold_{fold_idx}"
+        fold_dir.mkdir(exist_ok=True)
+
+        # Save fold config
+        fold_config_file = fold_dir / "config.json"
+        fold_config.save(str(fold_config_file))
+
+        try:
+            # Set up fold-specific random seeds
+            set_random_seeds(fold_config.training.seed)
+
+            # Load fold-specific data
+            train_data, test_data = load_split_data(fold_config)
+
+            # Create datasets
+            train_dataset = ImprovedTripletFeatureDataset(train_data, fold_config, split_name="train")
+            test_dataset = ImprovedTripletFeatureDataset(test_data, fold_config, split_name="test")
+
+            # Apply augmentations if enabled
+            if fold_config.data.enable_augmentations:
+                from dataset_augmented import AugmentedTripletFeatureDataset
+                train_dataset = AugmentedTripletFeatureDataset(
+                    base_dataset=train_dataset,
+                    config=fold_config,
+                    split_name="train"
+                )
+
+            # Initialize model
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model = ImprovedASTTripletWrapper(fold_config).to(device)
+
+            # Set up trainer
+            checkpoints_dir = fold_dir / "checkpoints"
+            checkpoints_dir.mkdir(exist_ok=True)
+
+            training_args = TrainingArguments(
+                output_dir=str(checkpoints_dir),
+                logging_strategy=fold_config.training.logging_strategy,
+                eval_strategy=fold_config.training.eval_strategy,
+                save_strategy="no",  # Don't save intermediate checkpoints in K-fold
+                learning_rate=fold_config.training.learning_rate,
+                per_device_train_batch_size=fold_config.training.batch_size,
+                gradient_accumulation_steps=fold_config.training.gradient_accumulation_steps,
+                num_train_epochs=fold_config.training.epochs,
+                weight_decay=fold_config.training.weight_decay,
+                logging_steps=fold_config.training.logging_steps,
+                dataloader_num_workers=fold_config.training.num_workers,
+                dataloader_pin_memory=fold_config.training.pin_memory,
+                report_to="none",
+                logging_first_step=False,
+                disable_tqdm=fold_config.training.disable_tqdm,
+                log_level="warning",
+                seed=fold_config.training.seed,
+                data_seed=fold_config.training.seed,
+                max_grad_norm=fold_config.training.gradient_clip_norm,
+                bf16=fold_config.training.bf16,
+                fp16=fold_config.training.fp16,
+                tf32=fold_config.training.tf32,
+            )
+
+            # Create trainer with minimal callbacks for K-fold
+            callbacks = [
+                CleanLoggingCallback(),
+                MarginSchedulingCallback(model)
+            ]
+
+            trainer = DataLoaderTrainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_dataset,
+                eval_dataset=test_dataset,
+                data_collator=FastSafeCollator(validate_every_n=0),
+                compute_metrics=compute_metrics,
+                callbacks=callbacks,
+                config=fold_config
+            )
+
+            logger.info(f"Starting training for fold {fold_idx} with seed {fold_config.training.seed}")
+
+            # Train the model
+            train_result = trainer.train()
+
+            # Get final evaluation metrics
+            final_metrics = trainer.evaluate()
+
+            # Save model
+            model_path = fold_dir / "model.safetensors"
+            save_file(model.state_dict(), model_path)
+
+            # Extract and organize training history
+            training_history = {
+                "epoch": [],
+                "train_loss": [],
+                "eval_loss": [],
+                "eval_accuracy": [],
+                "learning_rate": []
+            }
+
+            # Process log history from trainer
+            if hasattr(trainer.state, 'log_history') and trainer.state.log_history:
+                epoch_data = {}
+
+                for log_entry in trainer.state.log_history:
+                    epoch = log_entry.get('epoch')
+                    if epoch is not None:
+                        if epoch not in epoch_data:
+                            epoch_data[epoch] = {}
+
+                        # Update epoch data with all available metrics
+                        for key, value in log_entry.items():
+                            if key != 'epoch':
+                                epoch_data[epoch][key] = value
+
+                # Convert to lists for easier analysis
+                for epoch in sorted(epoch_data.keys()):
+                    data = epoch_data[epoch]
+                    training_history["epoch"].append(epoch)
+                    training_history["train_loss"].append(data.get('train_loss'))
+                    training_history["eval_loss"].append(data.get('eval_loss'))
+                    training_history["eval_accuracy"].append(data.get('eval_accuracy'))
+                    training_history["learning_rate"].append(data.get('learning_rate'))
+
+            # Save comprehensive fold metrics
+            fold_result = {
+                "fold_idx": fold_idx,
+                "fold_seed": fold_config.training.seed,
+                "train_samples": len(train_dataset),
+                "test_samples": len(test_dataset),
+                "final_accuracy": final_metrics.get("eval_accuracy", 0.0),
+                "final_loss": final_metrics.get("eval_loss", 0.0),
+                "training_history": training_history,
+                "final_metrics": final_metrics,
+                "train_runtime": train_result.metrics.get("train_runtime", 0.0),
+                "total_steps": trainer.state.global_step if trainer.state else 0
+            }
+
+            # Save detailed fold results
+            with open(fold_dir / "fold_metrics.json", 'w') as f:
+                json.dump(fold_result, f, indent=2)
+
+            # Save training history as separate CSV for easy analysis
+            if training_history["epoch"]:
+                import pandas as pd
+                history_df = pd.DataFrame(training_history)
+                history_df.to_csv(fold_dir / "training_history.csv", index=False)
+
+            fold_metrics.append(fold_result)
+
+            logger.info(f"Fold {fold_idx} completed - Final Accuracy: {final_metrics.get('eval_accuracy', 0.0):.4f}")
+
+        except Exception as e:
+            logger.error(f"Fold {fold_idx} failed: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+
+            # Add failed fold to results
+            fold_metrics.append({
+                "fold_idx": fold_idx,
+                "fold_seed": fold_config.training.seed,
+                "status": "failed",
+                "error": str(e)
+            })
+
+    # Compute final statistics
+    successful_folds = [f for f in fold_metrics if "final_accuracy" in f]
+
+    if successful_folds:
+        accuracies = [f["final_accuracy"] for f in successful_folds]
+        losses = [f["final_loss"] for f in successful_folds]
+
+        final_statistics = {
+            "mean_accuracy": float(np.mean(accuracies)),
+            "std_accuracy": float(np.std(accuracies)),
+            "min_accuracy": float(np.min(accuracies)),
+            "max_accuracy": float(np.max(accuracies)),
+            "mean_loss": float(np.mean(losses)),
+            "std_loss": float(np.std(losses)),
+            "successful_folds": len(successful_folds),
+            "total_folds": k,
+            "individual_accuracies": accuracies,
+            "individual_losses": losses
+        }
+
+        logger.info(f"\n{'='*80}")
+        logger.info(f"K-FOLD CROSS-VALIDATION RESULTS")
+        logger.info(f"{'='*80}")
+        logger.info(f"Mean Accuracy: {final_statistics['mean_accuracy']:.4f} ± {final_statistics['std_accuracy']:.4f}")
+        logger.info(f"Accuracy Range: {final_statistics['min_accuracy']:.4f} - {final_statistics['max_accuracy']:.4f}")
+        logger.info(f"Mean Loss: {final_statistics['mean_loss']:.4f} ± {final_statistics['std_loss']:.4f}")
+        logger.info(f"Successful Folds: {final_statistics['successful_folds']}/{k}")
+        logger.info(f"Individual Accuracies: {[f'{acc:.4f}' for acc in accuracies]}")
+
+        # Save aggregated training curves for analysis
+        if successful_folds:
+            aggregate_training_curves(successful_folds, results_dir / "aggregated_training_curves.json")
+
+    else:
+        final_statistics = {
+            "status": "all_folds_failed",
+            "successful_folds": 0,
+            "total_folds": k
+        }
+        logger.error("All folds failed!")
+
+    # Save experiment summary
+    experiment_summary = {
+        "experiment_name": base_config.experiment_name,
+        "timestamp": timestamp,
+        "k_folds": k,
+        "base_seed": base_config.training.seed,
+        "results_dir": str(results_dir),
+        "fold_metrics": fold_metrics,
+        "final_statistics": final_statistics,
+        "config_summary": {
+            "batch_size": base_config.training.batch_size,
+            "epochs": base_config.training.epochs,
+            "learning_rate": base_config.training.learning_rate,
+            "triplet_margin": base_config.training.triplet_margin
+        }
+    }
+
+    with open(results_dir / "experiment_summary.json", 'w') as f:
+        json.dump(experiment_summary, f, indent=2)
+
+    logger.info(f"\nK-fold experiment complete! Results saved to: {results_dir}")
+    return experiment_summary
+
+
+def aggregate_training_curves(successful_folds: List[Dict], output_file: str) -> None:
+    """
+    Aggregate training curves across successful folds for analysis.
+
+    Args:
+        successful_folds: List of successful fold results
+        output_file: Path to save aggregated curves
+    """
+    import numpy as np
+
+    # Find common epochs across all folds
+    all_epochs = []
+    for fold in successful_folds:
+        history = fold.get("training_history", {})
+        epochs = history.get("epoch", [])
+        if epochs:
+            all_epochs.append(set(epochs))
+
+    if not all_epochs:
+        return
+
+    # Get intersection of all epochs (epochs present in all folds)
+    common_epochs = sorted(set.intersection(*all_epochs))
+
+    if not common_epochs:
+        return
+
+    # Aggregate metrics for common epochs
+    aggregated = {
+        "epochs": common_epochs,
+        "mean_train_loss": [],
+        "std_train_loss": [],
+        "mean_eval_loss": [],
+        "std_eval_loss": [],
+        "mean_eval_accuracy": [],
+        "std_eval_accuracy": [],
+        "individual_folds": {}
+    }
+
+    # Collect data for each fold
+    for fold_idx, fold in enumerate(successful_folds):
+        fold_id = f"fold_{fold['fold_idx']}"
+        aggregated["individual_folds"][fold_id] = {
+            "epochs": [],
+            "train_loss": [],
+            "eval_loss": [],
+            "eval_accuracy": []
+        }
+
+        history = fold.get("training_history", {})
+        epochs = history.get("epoch", [])
+
+        for epoch in common_epochs:
+            if epoch in epochs:
+                epoch_idx = epochs.index(epoch)
+                aggregated["individual_folds"][fold_id]["epochs"].append(epoch)
+                aggregated["individual_folds"][fold_id]["train_loss"].append(
+                    history.get("train_loss", [])[epoch_idx] if epoch_idx < len(history.get("train_loss", [])) else None
+                )
+                aggregated["individual_folds"][fold_id]["eval_loss"].append(
+                    history.get("eval_loss", [])[epoch_idx] if epoch_idx < len(history.get("eval_loss", [])) else None
+                )
+                aggregated["individual_folds"][fold_id]["eval_accuracy"].append(
+                    history.get("eval_accuracy", [])[epoch_idx] if epoch_idx < len(history.get("eval_accuracy", [])) else None
+                )
+
+    # Compute mean and std for each epoch
+    for epoch in common_epochs:
+        train_losses = []
+        eval_losses = []
+        eval_accuracies = []
+
+        for fold_data in aggregated["individual_folds"].values():
+            if epoch in fold_data["epochs"]:
+                epoch_idx = fold_data["epochs"].index(epoch)
+
+                tl = fold_data["train_loss"][epoch_idx]
+                el = fold_data["eval_loss"][epoch_idx]
+                ea = fold_data["eval_accuracy"][epoch_idx]
+
+                if tl is not None:
+                    train_losses.append(tl)
+                if el is not None:
+                    eval_losses.append(el)
+                if ea is not None:
+                    eval_accuracies.append(ea)
+
+        aggregated["mean_train_loss"].append(float(np.mean(train_losses)) if train_losses else None)
+        aggregated["std_train_loss"].append(float(np.std(train_losses)) if train_losses else None)
+        aggregated["mean_eval_loss"].append(float(np.mean(eval_losses)) if eval_losses else None)
+        aggregated["std_eval_loss"].append(float(np.std(eval_losses)) if eval_losses else None)
+        aggregated["mean_eval_accuracy"].append(float(np.mean(eval_accuracies)) if eval_accuracies else None)
+        aggregated["std_eval_accuracy"].append(float(np.std(eval_accuracies)) if eval_accuracies else None)
+
+    # Save aggregated curves
+    with open(output_file, 'w') as f:
+        json.dump(aggregated, f, indent=2)
+
+    logger.info(f"Aggregated training curves saved to: {output_file}")
 
 
 if __name__ == "__main__":
