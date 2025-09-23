@@ -7,6 +7,8 @@ import time
 from typing import List, Union
 import unicodedata
 
+cookies_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+
 class YouTubeMusicDownloader:
     def __init__(self, output_dir):
         self.output_dir = output_dir

@@ -1,3 +1,4 @@
 .env
 thesis-env/
 WAV/
+.safetensors

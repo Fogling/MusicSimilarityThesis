@@ -1,0 +1,638 @@
+[INFO] SLURM_JOB_TMP is: /local/slurmjobs/163134
+[INFO] Using GPU: 0
+[INFO] Staging archive to node SSD...
+'/homes/nnebeling/thesis/precomputed_7G_2Chunk.zip' -> '/local/slurmjobs/163134/precomputed_7G_2Chunk.zip'
+[INFO] Unpacking on SSD...
+[OK] Unpacked. Top-level contents:
+.
+precomputed_7G_2Chunk
+precomputed_7G_2Chunk/Chill House
+precomputed_7G_2Chunk/Zyzz Music
+precomputed_7G_2Chunk/Emotional Techno
+precomputed_7G_2Chunk/Party House
+precomputed_7G_2Chunk/Chiller vibe goa
+precomputed_7G_2Chunk/Dark Techno
+precomputed_7G_2Chunk/Party Goa
+[INFO] Starting training...
+2025-09-21 22:31:38,550 - AST_Triplet_training - INFO - 
+================================================================================
+2025-09-21 22:31:38,551 - AST_Triplet_training - INFO - STARTING 5-FOLD CROSS-VALIDATION EXPERIMENT
+2025-09-21 22:31:38,551 - AST_Triplet_training - INFO - Results directory: kfold_results/kfold_20250921_223138
+2025-09-21 22:31:38,551 - AST_Triplet_training - INFO - ================================================================================
+2025-09-21 22:31:38,551 - AST_Triplet_training - INFO - Creating K-fold partitions...
+2025-09-21 22:31:38,551 - kfold_utils - INFO - Creating 5-fold partitions for track-level cross-validation
+2025-09-21 22:31:38,559 - kfold_utils - INFO - Subgenre Chill House: 81 tracks available for 5-fold CV
+2025-09-21 22:31:38,562 - kfold_utils - INFO - Subgenre Chiller vibe goa: 54 tracks available for 5-fold CV
+2025-09-21 22:31:38,570 - kfold_utils - INFO - Subgenre Dark Techno: 86 tracks available for 5-fold CV
+2025-09-21 22:31:38,576 - kfold_utils - INFO - Subgenre Emotional Techno: 75 tracks available for 5-fold CV
+2025-09-21 22:31:38,581 - kfold_utils - INFO - Subgenre Party Goa: 62 tracks available for 5-fold CV
+2025-09-21 22:31:38,586 - kfold_utils - INFO - Subgenre Party House: 69 tracks available for 5-fold CV
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Zyzz Music: 77 tracks available for 5-fold CV
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Chill House K-fold partitions: [17, 16, 16, 16, 16]
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Chiller vibe goa K-fold partitions: [11, 11, 11, 11, 10]
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Dark Techno K-fold partitions: [18, 17, 17, 17, 17]
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Emotional Techno K-fold partitions: [15, 15, 15, 15, 15]
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Party Goa K-fold partitions: [13, 13, 12, 12, 12]
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Party House K-fold partitions: [14, 14, 14, 14, 13]
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Subgenre Zyzz Music K-fold partitions: [16, 16, 15, 15, 15]
+2025-09-21 22:31:38,593 - kfold_utils - INFO - Created 5-fold partitions for 7 subgenres
+2025-09-21 22:31:38,594 - kfold_utils - INFO - K-fold partitions saved to kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-21 22:31:38,594 - AST_Triplet_training - INFO - 
+============================================================
+2025-09-21 22:31:38,594 - AST_Triplet_training - INFO - TRAINING FOLD 1/5
+2025-09-21 22:31:38,594 - AST_Triplet_training - INFO - ============================================================
+2025-09-21 22:31:38,937 - AST_Triplet_training - INFO - Random seeds set to 13
+2025-09-21 22:31:38,937 - AST_Triplet_training - INFO - Loading K-fold data for fold 0/4
+2025-09-21 22:31:38,937 - AST_Triplet_training - INFO - Loading existing K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-21 22:31:38,938 - kfold_utils - INFO - Loaded K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-21 22:31:38,938 - kfold_utils - INFO - Fold 0: 400 train tracks, 104 test tracks
+2025-09-21 22:31:38,938 - kfold_utils - INFO - Generating triplets for fold 0 with seed 13
+2025-09-21 22:31:38,985 - kfold_utils - INFO - Generating training triplets for fold 0...
+2025-09-21 22:31:38,985 - AST_Triplet_training - INFO - Fold_0_train triplet generation config:
+2025-09-21 22:31:38,985 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-21 22:31:38,985 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-21 22:31:38,985 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-21 22:31:38,988 - AST_Triplet_training - INFO - Fold_0_train - Subgenre Chill House: 1536 triplets from 64 tracks
+2025-09-21 22:31:38,989 - AST_Triplet_training - INFO - Fold_0_train - Subgenre Chiller vibe goa: 1032 triplets from 43 tracks
+2025-09-21 22:31:38,992 - AST_Triplet_training - INFO - Fold_0_train - Subgenre Dark Techno: 1632 triplets from 68 tracks
+2025-09-21 22:31:38,995 - AST_Triplet_training - INFO - Fold_0_train - Subgenre Emotional Techno: 1440 triplets from 60 tracks
+2025-09-21 22:31:38,997 - AST_Triplet_training - INFO - Fold_0_train - Subgenre Party Goa: 1176 triplets from 49 tracks
+2025-09-21 22:31:39,000 - AST_Triplet_training - INFO - Fold_0_train - Subgenre Party House: 1320 triplets from 55 tracks
+2025-09-21 22:31:39,002 - AST_Triplet_training - INFO - Fold_0_train - Subgenre Zyzz Music: 1464 triplets from 61 tracks
+2025-09-21 22:31:39,002 - kfold_utils - INFO - Generating test triplets for fold 0...
+2025-09-21 22:31:39,002 - AST_Triplet_training - INFO - Fold_0_test triplet generation config:
+2025-09-21 22:31:39,002 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-21 22:31:39,002 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-21 22:31:39,003 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-21 22:31:39,003 - AST_Triplet_training - INFO - Fold_0_test - Subgenre Chill House: 408 triplets from 17 tracks
+2025-09-21 22:31:39,004 - AST_Triplet_training - INFO - Fold_0_test - Subgenre Chiller vibe goa: 264 triplets from 11 tracks
+2025-09-21 22:31:39,004 - AST_Triplet_training - INFO - Fold_0_test - Subgenre Dark Techno: 432 triplets from 18 tracks
+2025-09-21 22:31:39,005 - AST_Triplet_training - INFO - Fold_0_test - Subgenre Emotional Techno: 360 triplets from 15 tracks
+2025-09-21 22:31:39,006 - AST_Triplet_training - INFO - Fold_0_test - Subgenre Party Goa: 312 triplets from 13 tracks
+2025-09-21 22:31:39,006 - AST_Triplet_training - INFO - Fold_0_test - Subgenre Party House: 336 triplets from 14 tracks
+2025-09-21 22:31:39,007 - AST_Triplet_training - INFO - Fold_0_test - Subgenre Zyzz Music: 384 triplets from 16 tracks
+2025-09-21 22:31:39,113 - AST_Triplet_training - INFO - Initialized dataset (train) with 9600 triplets (resample_train_samples=False)
+2025-09-21 22:31:39,140 - AST_Triplet_training - INFO - Initialized dataset (test) with 2496 triplets (resample_train_samples=False)
+2025-09-21 22:31:39,144 - augmentations - INFO - SpectrogramAugmentations initialized: time_mask=0.3, freq_mask=0.3, noise=0.5, mixup=0.2
+2025-09-21 22:31:39,144 - augmentations - INFO - AST2DSpectrogramAugmentations initialized: freq_mask=0.4, time_mask=0.4
+2025-09-21 22:31:39,144 - augmentations - INFO - AugmentationPipeline initialized: enabled=True, 2d_aug=True, prob=0.7
+2025-09-21 22:31:39,145 - dataset_augmented - INFO - AugmentedTripletFeatureDataset initialized for train split: augmentations_enabled=True, base_dataset_size=9600
+2025-09-21 22:31:39,145 - AST_Triplet_training - INFO - Loading pretrained model: MIT/ast-finetuned-audioset-10-10-0.4593
+2025-09-21 22:31:40,925 - AST_Triplet_training - INFO - MLP Projection Head Architecture: 768 -> 512 -> 128
+2025-09-21 22:31:40,925 - AST_Triplet_training - INFO -   Activation: relu, Dropout: 0.15
+2025-09-21 22:31:40,925 - AST_Triplet_training - INFO -   Total parameters: 459,392
+2025-09-21 22:31:40,926 - AST_Triplet_training - INFO - Model initialized with projection to 128D
+2025-09-21 22:31:40,926 - AST_Triplet_training - INFO - Margin scheduling: 0.5 → 0.5 over 1 epochs
+2025-09-21 22:31:40,926 - AST_Triplet_training - INFO - Negative mining: none
+2025-09-21 22:31:41,219 - AST_Triplet_training - INFO - Starting training for fold 0 with seed 13
+2025-09-21 22:31:41,322 - AST_Triplet_training - INFO - Using stratified batch sampling for training
+2025-09-21 22:31:41,323 - AST_Triplet_training - INFO - Stratified batching: 7 subgenres, 2 guaranteed per subgenre, 10 random slots per batch
+2025-09-21 22:31:41,332 - AST_Triplet_training - INFO - Training started at 2025-09-21 22:31:41
+2025-09-21 22:31:41,332 - AST_Triplet_training - INFO - Epoch 0: Using margin 0.500
+{'loss': 0.2156, 'grad_norm': 0.6613739728927612, 'learning_rate': 1.8656641604010025e-05, 'epoch': 1.0}
+2025-09-21 22:39:12,439 - AST_Triplet_training - INFO - Evaluation - Epoch 1.0, Step 134: eval_loss=0.2117, eval_accuracy=0.823, Elapsed: 7m 31.1s
+2025-09-21 22:39:12,439 - AST_Triplet_training - INFO - Epoch 1: Using margin 0.500
+{'eval_accuracy': 0.8233173076923077, 'eval_loss': 0.21173453330993652, 'epoch': 1.0}
+{'loss': 0.0657, 'grad_norm': 0.26431408524513245, 'learning_rate': 1.731328320802005e-05, 'epoch': 2.0}
+2025-09-21 22:46:38,251 - AST_Triplet_training - INFO - Evaluation - Epoch 2.0, Step 268: eval_loss=0.1799, eval_accuracy=0.849, Elapsed: 14m 56.9s
+2025-09-21 22:46:38,251 - AST_Triplet_training - INFO - Epoch 2: Using margin 0.500
+{'eval_accuracy': 0.8489583333333334, 'eval_loss': 0.17991632223129272, 'epoch': 2.0}
+{'loss': 0.0462, 'grad_norm': 0.3953437805175781, 'learning_rate': 1.5969924812030076e-05, 'epoch': 3.0}
+2025-09-21 22:54:03,425 - AST_Triplet_training - INFO - Evaluation - Epoch 3.0, Step 402: eval_loss=0.1983, eval_accuracy=0.836, Elapsed: 22m 22.1s
+2025-09-21 22:54:03,426 - AST_Triplet_training - INFO - Epoch 3: Using margin 0.500
+{'eval_accuracy': 0.8361378205128205, 'eval_loss': 0.19832691550254822, 'epoch': 3.0}
+{'loss': 0.033, 'grad_norm': 0.34060290455818176, 'learning_rate': 1.4626566416040102e-05, 'epoch': 4.0}
+2025-09-21 23:01:28,626 - AST_Triplet_training - INFO - Evaluation - Epoch 4.0, Step 536: eval_loss=0.1802, eval_accuracy=0.848, Elapsed: 29m 47.3s
+2025-09-21 23:01:28,626 - AST_Triplet_training - INFO - Epoch 4: Using margin 0.500
+{'eval_accuracy': 0.8481570512820513, 'eval_loss': 0.18017899990081787, 'epoch': 4.0}
+{'loss': 0.0192, 'grad_norm': 0.5110219120979309, 'learning_rate': 1.3283208020050127e-05, 'epoch': 5.0}
+2025-09-21 23:08:53,745 - AST_Triplet_training - INFO - Evaluation - Epoch 5.0, Step 670: eval_loss=0.1924, eval_accuracy=0.840, Elapsed: 37m 12.4s
+2025-09-21 23:08:53,745 - AST_Triplet_training - INFO - Epoch 5: Using margin 0.500
+{'eval_accuracy': 0.8401442307692307, 'eval_loss': 0.19242599606513977, 'epoch': 5.0}
+{'loss': 0.0096, 'grad_norm': 0.0, 'learning_rate': 1.1939849624060151e-05, 'epoch': 6.0}
+2025-09-21 23:16:18,779 - AST_Triplet_training - INFO - Evaluation - Epoch 6.0, Step 804: eval_loss=0.1945, eval_accuracy=0.839, Elapsed: 44m 37.4s
+2025-09-21 23:16:18,780 - AST_Triplet_training - INFO - Epoch 6: Using margin 0.500
+{'eval_accuracy': 0.8393429487179487, 'eval_loss': 0.19453446567058563, 'epoch': 6.0}
+{'loss': 0.0056, 'grad_norm': 0.0, 'learning_rate': 1.0596491228070177e-05, 'epoch': 7.0}
+2025-09-21 23:23:43,495 - AST_Triplet_training - INFO - Evaluation - Epoch 7.0, Step 938: eval_loss=0.2000, eval_accuracy=0.831, Elapsed: 52m 2.2s
+2025-09-21 23:23:43,496 - AST_Triplet_training - INFO - Epoch 7: Using margin 0.500
+{'eval_accuracy': 0.8309294871794872, 'eval_loss': 0.19999374449253082, 'epoch': 7.0}
+{'loss': 0.003, 'grad_norm': 0.6471514701843262, 'learning_rate': 9.253132832080202e-06, 'epoch': 8.0}
+2025-09-21 23:31:08,496 - AST_Triplet_training - INFO - Evaluation - Epoch 8.0, Step 1072: eval_loss=0.2077, eval_accuracy=0.829, Elapsed: 59m 27.2s
+2025-09-21 23:31:08,496 - AST_Triplet_training - INFO - Epoch 8: Using margin 0.500
+{'eval_accuracy': 0.8285256410256411, 'eval_loss': 0.20772503316402435, 'epoch': 8.0}
+{'loss': 0.0035, 'grad_norm': 0.0, 'learning_rate': 7.909774436090226e-06, 'epoch': 9.0}
+2025-09-21 23:38:33,682 - AST_Triplet_training - INFO - Evaluation - Epoch 9.0, Step 1206: eval_loss=0.1845, eval_accuracy=0.846, Elapsed: 1h 6m 52.4s
+2025-09-21 23:38:33,683 - AST_Triplet_training - INFO - Epoch 9: Using margin 0.500
+{'eval_accuracy': 0.8461538461538461, 'eval_loss': 0.18445025384426117, 'epoch': 9.0}
+{'loss': 0.0024, 'grad_norm': 0.0, 'learning_rate': 6.566416040100251e-06, 'epoch': 10.0}
+2025-09-21 23:45:58,614 - AST_Triplet_training - INFO - Evaluation - Epoch 10.0, Step 1340: eval_loss=0.1896, eval_accuracy=0.845, Elapsed: 1h 14m 17.3s
+2025-09-21 23:45:58,615 - AST_Triplet_training - INFO - Epoch 10: Using margin 0.500
+{'eval_accuracy': 0.844551282051282, 'eval_loss': 0.18956562876701355, 'epoch': 10.0}
+{'loss': 0.002, 'grad_norm': 0.3017146587371826, 'learning_rate': 5.223057644110276e-06, 'epoch': 11.0}
+2025-09-21 23:53:23,580 - AST_Triplet_training - INFO - Evaluation - Epoch 11.0, Step 1474: eval_loss=0.1884, eval_accuracy=0.845, Elapsed: 1h 21m 42.2s
+2025-09-21 23:53:23,580 - AST_Triplet_training - INFO - Epoch 11: Using margin 0.500
+{'eval_accuracy': 0.8453525641025641, 'eval_loss': 0.18843387067317963, 'epoch': 11.0}
+{'loss': 0.0011, 'grad_norm': 0.0, 'learning_rate': 3.879699248120301e-06, 'epoch': 12.0}
+2025-09-22 00:00:48,499 - AST_Triplet_training - INFO - Evaluation - Epoch 12.0, Step 1608: eval_loss=0.1951, eval_accuracy=0.838, Elapsed: 1h 29m 7.2s
+2025-09-22 00:00:48,499 - AST_Triplet_training - INFO - Epoch 12: Using margin 0.500
+{'eval_accuracy': 0.8377403846153846, 'eval_loss': 0.19514697790145874, 'epoch': 12.0}
+{'loss': 0.0011, 'grad_norm': 0.0, 'learning_rate': 2.5363408521303263e-06, 'epoch': 13.0}
+2025-09-22 00:08:13,618 - AST_Triplet_training - INFO - Evaluation - Epoch 13.0, Step 1742: eval_loss=0.1933, eval_accuracy=0.843, Elapsed: 1h 36m 32.3s
+2025-09-22 00:08:13,619 - AST_Triplet_training - INFO - Epoch 13: Using margin 0.500
+{'eval_accuracy': 0.8433493589743589, 'eval_loss': 0.19326339662075043, 'epoch': 13.0}
+{'loss': 0.0012, 'grad_norm': 0.0, 'learning_rate': 1.192982456140351e-06, 'epoch': 14.0}
+2025-09-22 00:15:38,463 - AST_Triplet_training - INFO - Evaluation - Epoch 14.0, Step 1876: eval_loss=0.1935, eval_accuracy=0.844, Elapsed: 1h 43m 57.1s
+2025-09-22 00:15:38,465 - AST_Triplet_training - INFO - Epoch 14: Using margin 0.500
+{'eval_accuracy': 0.8441506410256411, 'eval_loss': 0.19354018568992615, 'epoch': 14.0}
+{'loss': 0.001, 'grad_norm': 0.0, 'learning_rate': 0.0, 'epoch': 14.8925}
+2025-09-22 00:22:19,652 - AST_Triplet_training - INFO - Evaluation - Epoch 14.8925, Step 1995: eval_loss=0.1958, eval_accuracy=0.841, Elapsed: 1h 50m 38.3s
+2025-09-22 00:22:19,656 - AST_Triplet_training - INFO - Training completed! Total training time: 1h 50m 38.3s
+2025-09-22 00:22:19,656 - AST_Triplet_training - INFO - Training ended at 2025-09-22 00:22:19
+{'eval_accuracy': 0.8405448717948718, 'eval_loss': 0.19580838084220886, 'epoch': 14.8925}
+{'train_runtime': 6638.3221, 'train_samples_per_second': 21.692, 'train_steps_per_second': 0.301, 'train_loss': 0.027554645167108167, 'epoch': 14.8925}
+2025-09-22 00:22:58,310 - AST_Triplet_training - INFO - Fold 0 completed - Final Accuracy: 0.8405
+2025-09-22 00:22:58,310 - AST_Triplet_training - INFO - 
+============================================================
+2025-09-22 00:22:58,310 - AST_Triplet_training - INFO - TRAINING FOLD 2/5
+2025-09-22 00:22:58,310 - AST_Triplet_training - INFO - ============================================================
+2025-09-22 00:22:58,312 - AST_Triplet_training - INFO - Random seeds set to 14
+2025-09-22 00:22:58,312 - AST_Triplet_training - INFO - Loading K-fold data for fold 1/4
+2025-09-22 00:22:58,312 - AST_Triplet_training - INFO - Loading existing K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 00:22:58,312 - kfold_utils - INFO - Loaded K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 00:22:58,312 - kfold_utils - INFO - Fold 1: 402 train tracks, 102 test tracks
+2025-09-22 00:22:58,312 - kfold_utils - INFO - Generating triplets for fold 1 with seed 15
+2025-09-22 00:22:58,360 - kfold_utils - INFO - Generating training triplets for fold 1...
+2025-09-22 00:22:58,360 - AST_Triplet_training - INFO - Fold_1_train triplet generation config:
+2025-09-22 00:22:58,360 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 00:22:58,360 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 00:22:58,360 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 00:22:58,363 - AST_Triplet_training - INFO - Fold_1_train - Subgenre Chill House: 1560 triplets from 65 tracks
+2025-09-22 00:22:58,365 - AST_Triplet_training - INFO - Fold_1_train - Subgenre Chiller vibe goa: 1032 triplets from 43 tracks
+2025-09-22 00:22:58,368 - AST_Triplet_training - INFO - Fold_1_train - Subgenre Dark Techno: 1656 triplets from 69 tracks
+2025-09-22 00:22:58,371 - AST_Triplet_training - INFO - Fold_1_train - Subgenre Emotional Techno: 1440 triplets from 60 tracks
+2025-09-22 00:22:58,373 - AST_Triplet_training - INFO - Fold_1_train - Subgenre Party Goa: 1176 triplets from 49 tracks
+2025-09-22 00:22:58,376 - AST_Triplet_training - INFO - Fold_1_train - Subgenre Party House: 1320 triplets from 55 tracks
+2025-09-22 00:22:58,378 - AST_Triplet_training - INFO - Fold_1_train - Subgenre Zyzz Music: 1464 triplets from 61 tracks
+2025-09-22 00:22:58,378 - kfold_utils - INFO - Generating test triplets for fold 1...
+2025-09-22 00:22:58,378 - AST_Triplet_training - INFO - Fold_1_test triplet generation config:
+2025-09-22 00:22:58,378 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 00:22:58,378 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 00:22:58,378 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 00:22:58,379 - AST_Triplet_training - INFO - Fold_1_test - Subgenre Chill House: 384 triplets from 16 tracks
+2025-09-22 00:22:58,380 - AST_Triplet_training - INFO - Fold_1_test - Subgenre Chiller vibe goa: 264 triplets from 11 tracks
+2025-09-22 00:22:58,380 - AST_Triplet_training - INFO - Fold_1_test - Subgenre Dark Techno: 408 triplets from 17 tracks
+2025-09-22 00:22:58,381 - AST_Triplet_training - INFO - Fold_1_test - Subgenre Emotional Techno: 360 triplets from 15 tracks
+2025-09-22 00:22:58,382 - AST_Triplet_training - INFO - Fold_1_test - Subgenre Party Goa: 312 triplets from 13 tracks
+2025-09-22 00:22:58,382 - AST_Triplet_training - INFO - Fold_1_test - Subgenre Party House: 336 triplets from 14 tracks
+2025-09-22 00:22:58,383 - AST_Triplet_training - INFO - Fold_1_test - Subgenre Zyzz Music: 384 triplets from 16 tracks
+2025-09-22 00:22:58,493 - AST_Triplet_training - INFO - Initialized dataset (train) with 9648 triplets (resample_train_samples=False)
+2025-09-22 00:22:58,520 - AST_Triplet_training - INFO - Initialized dataset (test) with 2448 triplets (resample_train_samples=False)
+2025-09-22 00:22:58,520 - augmentations - INFO - SpectrogramAugmentations initialized: time_mask=0.3, freq_mask=0.3, noise=0.5, mixup=0.2
+2025-09-22 00:22:58,520 - augmentations - INFO - AST2DSpectrogramAugmentations initialized: freq_mask=0.4, time_mask=0.4
+2025-09-22 00:22:58,520 - augmentations - INFO - AugmentationPipeline initialized: enabled=True, 2d_aug=True, prob=0.7
+2025-09-22 00:22:58,520 - dataset_augmented - INFO - AugmentedTripletFeatureDataset initialized for train split: augmentations_enabled=True, base_dataset_size=9648
+2025-09-22 00:22:58,521 - AST_Triplet_training - INFO - Loading pretrained model: MIT/ast-finetuned-audioset-10-10-0.4593
+2025-09-22 00:22:58,940 - AST_Triplet_training - INFO - MLP Projection Head Architecture: 768 -> 512 -> 128
+2025-09-22 00:22:58,940 - AST_Triplet_training - INFO -   Activation: relu, Dropout: 0.15
+2025-09-22 00:22:58,940 - AST_Triplet_training - INFO -   Total parameters: 459,392
+2025-09-22 00:22:58,940 - AST_Triplet_training - INFO - Model initialized with projection to 128D
+2025-09-22 00:22:58,940 - AST_Triplet_training - INFO - Margin scheduling: 0.5 → 0.5 over 1 epochs
+2025-09-22 00:22:58,940 - AST_Triplet_training - INFO - Negative mining: none
+2025-09-22 00:22:59,056 - AST_Triplet_training - INFO - Starting training for fold 1 with seed 14
+2025-09-22 00:22:59,813 - AST_Triplet_training - INFO - Using stratified batch sampling for training
+2025-09-22 00:22:59,815 - AST_Triplet_training - INFO - Stratified batching: 7 subgenres, 2 guaranteed per subgenre, 10 random slots per batch
+2025-09-22 00:22:59,824 - AST_Triplet_training - INFO - Training started at 2025-09-22 00:22:59
+2025-09-22 00:22:59,824 - AST_Triplet_training - INFO - Epoch 0: Using margin 0.500
+{'eval_accuracy': 0.8405448717948718, 'eval_loss': 0.19580838084220886, 'eval_runtime': 37.6111, 'eval_samples_per_second': 66.363, 'eval_steps_per_second': 8.295, 'epoch': 14.8925}
+{'loss': 0.2263, 'grad_norm': 0.9640220403671265, 'learning_rate': 1.866666666666667e-05, 'epoch': 1.0}
+2025-09-22 00:30:31,623 - AST_Triplet_training - INFO - Evaluation - Epoch 1.0, Step 134: eval_loss=0.2145, eval_accuracy=0.817, Elapsed: 7m 31.8s
+2025-09-22 00:30:31,624 - AST_Triplet_training - INFO - Epoch 1: Using margin 0.500
+{'eval_accuracy': 0.8174019607843137, 'eval_loss': 0.21453304588794708, 'epoch': 1.0}
+{'loss': 0.0674, 'grad_norm': 0.8522152304649353, 'learning_rate': 1.7333333333333336e-05, 'epoch': 2.0}
+2025-09-22 00:37:59,222 - AST_Triplet_training - INFO - Evaluation - Epoch 2.0, Step 268: eval_loss=0.1972, eval_accuracy=0.835, Elapsed: 14m 59.4s
+2025-09-22 00:37:59,223 - AST_Triplet_training - INFO - Epoch 2: Using margin 0.500
+{'eval_accuracy': 0.8353758169934641, 'eval_loss': 0.19717822968959808, 'epoch': 2.0}
+{'loss': 0.0338, 'grad_norm': 0.9208135008811951, 'learning_rate': 1.6000000000000003e-05, 'epoch': 3.0}
+2025-09-22 00:45:26,431 - AST_Triplet_training - INFO - Evaluation - Epoch 3.0, Step 402: eval_loss=0.1965, eval_accuracy=0.842, Elapsed: 22m 26.6s
+2025-09-22 00:45:26,431 - AST_Triplet_training - INFO - Epoch 3: Using margin 0.500
+{'eval_accuracy': 0.8423202614379085, 'eval_loss': 0.19654183089733124, 'epoch': 3.0}
+{'loss': 0.0159, 'grad_norm': 0.9938535094261169, 'learning_rate': 1.4666666666666666e-05, 'epoch': 4.0}
+2025-09-22 00:52:52,798 - AST_Triplet_training - INFO - Evaluation - Epoch 4.0, Step 536: eval_loss=0.2073, eval_accuracy=0.825, Elapsed: 29m 53.0s
+2025-09-22 00:52:52,798 - AST_Triplet_training - INFO - Epoch 4: Using margin 0.500
+{'eval_accuracy': 0.8251633986928104, 'eval_loss': 0.2072584629058838, 'epoch': 4.0}
+{'loss': 0.0067, 'grad_norm': 0.0, 'learning_rate': 1.3333333333333333e-05, 'epoch': 5.0}
+2025-09-22 01:00:19,262 - AST_Triplet_training - INFO - Evaluation - Epoch 5.0, Step 670: eval_loss=0.2228, eval_accuracy=0.817, Elapsed: 37m 19.4s
+2025-09-22 01:00:19,262 - AST_Triplet_training - INFO - Epoch 5: Using margin 0.500
+{'eval_accuracy': 0.8174019607843137, 'eval_loss': 0.22281397879123688, 'epoch': 5.0}
+{'loss': 0.0033, 'grad_norm': 0.0, 'learning_rate': 1.2e-05, 'epoch': 6.0}
+2025-09-22 01:07:45,770 - AST_Triplet_training - INFO - Evaluation - Epoch 6.0, Step 804: eval_loss=0.2133, eval_accuracy=0.825, Elapsed: 44m 45.9s
+2025-09-22 01:07:45,770 - AST_Triplet_training - INFO - Epoch 6: Using margin 0.500
+{'eval_accuracy': 0.8251633986928104, 'eval_loss': 0.21328464150428772, 'epoch': 6.0}
+{'loss': 0.002, 'grad_norm': 0.0, 'learning_rate': 1.0666666666666667e-05, 'epoch': 7.0}
+2025-09-22 01:15:12,704 - AST_Triplet_training - INFO - Evaluation - Epoch 7.0, Step 938: eval_loss=0.2158, eval_accuracy=0.830, Elapsed: 52m 12.9s
+2025-09-22 01:15:12,704 - AST_Triplet_training - INFO - Epoch 7: Using margin 0.500
+{'eval_accuracy': 0.8296568627450981, 'eval_loss': 0.2157955765724182, 'epoch': 7.0}
+{'loss': 0.0021, 'grad_norm': 0.0, 'learning_rate': 9.333333333333334e-06, 'epoch': 8.0}
+2025-09-22 01:22:39,273 - AST_Triplet_training - INFO - Evaluation - Epoch 8.0, Step 1072: eval_loss=0.2218, eval_accuracy=0.821, Elapsed: 59m 39.4s
+2025-09-22 01:22:39,274 - AST_Triplet_training - INFO - Epoch 8: Using margin 0.500
+{'eval_accuracy': 0.8206699346405228, 'eval_loss': 0.22181490063667297, 'epoch': 8.0}
+{'loss': 0.002, 'grad_norm': 1.5617419481277466, 'learning_rate': 8.000000000000001e-06, 'epoch': 9.0}
+2025-09-22 01:30:05,099 - AST_Triplet_training - INFO - Evaluation - Epoch 9.0, Step 1206: eval_loss=0.2173, eval_accuracy=0.822, Elapsed: 1h 7m 5.3s
+2025-09-22 01:30:05,099 - AST_Triplet_training - INFO - Epoch 9: Using margin 0.500
+{'eval_accuracy': 0.8218954248366013, 'eval_loss': 0.2172621488571167, 'epoch': 9.0}
+{'loss': 0.001, 'grad_norm': 0.0, 'learning_rate': 6.666666666666667e-06, 'epoch': 10.0}
+2025-09-22 01:37:31,540 - AST_Triplet_training - INFO - Evaluation - Epoch 10.0, Step 1340: eval_loss=0.2284, eval_accuracy=0.818, Elapsed: 1h 14m 31.7s
+2025-09-22 01:37:31,541 - AST_Triplet_training - INFO - Epoch 10: Using margin 0.500
+{'eval_accuracy': 0.8178104575163399, 'eval_loss': 0.22837510704994202, 'epoch': 10.0}
+{'loss': 0.0007, 'grad_norm': 0.0, 'learning_rate': 5.333333333333334e-06, 'epoch': 11.0}
+2025-09-22 01:44:57,229 - AST_Triplet_training - INFO - Evaluation - Epoch 11.0, Step 1474: eval_loss=0.2153, eval_accuracy=0.826, Elapsed: 1h 21m 57.4s
+2025-09-22 01:44:57,229 - AST_Triplet_training - INFO - Epoch 11: Using margin 0.500
+{'eval_accuracy': 0.8263888888888888, 'eval_loss': 0.21526814997196198, 'epoch': 11.0}
+{'loss': 0.0009, 'grad_norm': 0.20888887345790863, 'learning_rate': 4.000000000000001e-06, 'epoch': 12.0}
+2025-09-22 01:52:23,505 - AST_Triplet_training - INFO - Evaluation - Epoch 12.0, Step 1608: eval_loss=0.2157, eval_accuracy=0.830, Elapsed: 1h 29m 23.7s
+2025-09-22 01:52:23,505 - AST_Triplet_training - INFO - Epoch 12: Using margin 0.500
+{'eval_accuracy': 0.8304738562091504, 'eval_loss': 0.21573017537593842, 'epoch': 12.0}
+{'loss': 0.0006, 'grad_norm': 0.0, 'learning_rate': 2.666666666666667e-06, 'epoch': 13.0}
+2025-09-22 01:59:49,869 - AST_Triplet_training - INFO - Evaluation - Epoch 13.0, Step 1742: eval_loss=0.2183, eval_accuracy=0.830, Elapsed: 1h 36m 50.0s
+2025-09-22 01:59:49,870 - AST_Triplet_training - INFO - Epoch 13: Using margin 0.500
+{'eval_accuracy': 0.8296568627450981, 'eval_loss': 0.218317449092865, 'epoch': 13.0}
+{'loss': 0.0003, 'grad_norm': 0.0, 'learning_rate': 1.3333333333333334e-06, 'epoch': 14.0}
+2025-09-22 02:07:16,403 - AST_Triplet_training - INFO - Evaluation - Epoch 14.0, Step 1876: eval_loss=0.2173, eval_accuracy=0.828, Elapsed: 1h 44m 16.6s
+2025-09-22 02:07:16,404 - AST_Triplet_training - INFO - Epoch 14: Using margin 0.500
+{'eval_accuracy': 0.8276143790849673, 'eval_loss': 0.21726177632808685, 'epoch': 14.0}
+{'loss': 0.0004, 'grad_norm': 0.0, 'learning_rate': 0.0, 'epoch': 15.0}
+2025-09-22 02:14:42,865 - AST_Triplet_training - INFO - Evaluation - Epoch 15.0, Step 2010: eval_loss=0.2172, eval_accuracy=0.825, Elapsed: 1h 51m 43.0s
+2025-09-22 02:14:42,866 - AST_Triplet_training - INFO - Training completed! Total training time: 1h 51m 43.0s
+2025-09-22 02:14:42,866 - AST_Triplet_training - INFO - Training ended at 2025-09-22 02:14:42
+{'eval_accuracy': 0.8247549019607843, 'eval_loss': 0.21722763776779175, 'epoch': 15.0}
+{'train_runtime': 6703.0428, 'train_samples_per_second': 21.59, 'train_steps_per_second': 0.3, 'train_loss': 0.02422784173777744, 'epoch': 15.0}
+2025-09-22 02:15:20,806 - AST_Triplet_training - INFO - Fold 1 completed - Final Accuracy: 0.8248
+2025-09-22 02:15:20,807 - AST_Triplet_training - INFO - 
+============================================================
+2025-09-22 02:15:20,807 - AST_Triplet_training - INFO - TRAINING FOLD 3/5
+2025-09-22 02:15:20,807 - AST_Triplet_training - INFO - ============================================================
+2025-09-22 02:15:20,809 - AST_Triplet_training - INFO - Random seeds set to 15
+2025-09-22 02:15:20,809 - AST_Triplet_training - INFO - Loading K-fold data for fold 2/4
+2025-09-22 02:15:20,809 - AST_Triplet_training - INFO - Loading existing K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 02:15:20,809 - kfold_utils - INFO - Loaded K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 02:15:20,809 - kfold_utils - INFO - Fold 2: 404 train tracks, 100 test tracks
+2025-09-22 02:15:20,809 - kfold_utils - INFO - Generating triplets for fold 2 with seed 17
+2025-09-22 02:15:20,858 - kfold_utils - INFO - Generating training triplets for fold 2...
+2025-09-22 02:15:20,858 - AST_Triplet_training - INFO - Fold_2_train triplet generation config:
+2025-09-22 02:15:20,858 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 02:15:20,858 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 02:15:20,858 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 02:15:20,861 - AST_Triplet_training - INFO - Fold_2_train - Subgenre Chill House: 1560 triplets from 65 tracks
+2025-09-22 02:15:20,863 - AST_Triplet_training - INFO - Fold_2_train - Subgenre Chiller vibe goa: 1032 triplets from 43 tracks
+2025-09-22 02:15:20,866 - AST_Triplet_training - INFO - Fold_2_train - Subgenre Dark Techno: 1656 triplets from 69 tracks
+2025-09-22 02:15:20,869 - AST_Triplet_training - INFO - Fold_2_train - Subgenre Emotional Techno: 1440 triplets from 60 tracks
+2025-09-22 02:15:20,871 - AST_Triplet_training - INFO - Fold_2_train - Subgenre Party Goa: 1200 triplets from 50 tracks
+2025-09-22 02:15:20,874 - AST_Triplet_training - INFO - Fold_2_train - Subgenre Party House: 1320 triplets from 55 tracks
+2025-09-22 02:15:20,876 - AST_Triplet_training - INFO - Fold_2_train - Subgenre Zyzz Music: 1488 triplets from 62 tracks
+2025-09-22 02:15:20,876 - kfold_utils - INFO - Generating test triplets for fold 2...
+2025-09-22 02:15:20,876 - AST_Triplet_training - INFO - Fold_2_test triplet generation config:
+2025-09-22 02:15:20,877 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 02:15:20,877 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 02:15:20,877 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 02:15:20,877 - AST_Triplet_training - INFO - Fold_2_test - Subgenre Chill House: 384 triplets from 16 tracks
+2025-09-22 02:15:20,878 - AST_Triplet_training - INFO - Fold_2_test - Subgenre Chiller vibe goa: 264 triplets from 11 tracks
+2025-09-22 02:15:20,878 - AST_Triplet_training - INFO - Fold_2_test - Subgenre Dark Techno: 408 triplets from 17 tracks
+2025-09-22 02:15:20,879 - AST_Triplet_training - INFO - Fold_2_test - Subgenre Emotional Techno: 360 triplets from 15 tracks
+2025-09-22 02:15:20,880 - AST_Triplet_training - INFO - Fold_2_test - Subgenre Party Goa: 288 triplets from 12 tracks
+2025-09-22 02:15:20,880 - AST_Triplet_training - INFO - Fold_2_test - Subgenre Party House: 336 triplets from 14 tracks
+2025-09-22 02:15:20,881 - AST_Triplet_training - INFO - Fold_2_test - Subgenre Zyzz Music: 360 triplets from 15 tracks
+2025-09-22 02:15:20,990 - AST_Triplet_training - INFO - Initialized dataset (train) with 9696 triplets (resample_train_samples=False)
+2025-09-22 02:15:21,018 - AST_Triplet_training - INFO - Initialized dataset (test) with 2400 triplets (resample_train_samples=False)
+2025-09-22 02:15:21,018 - augmentations - INFO - SpectrogramAugmentations initialized: time_mask=0.3, freq_mask=0.3, noise=0.5, mixup=0.2
+2025-09-22 02:15:21,018 - augmentations - INFO - AST2DSpectrogramAugmentations initialized: freq_mask=0.4, time_mask=0.4
+2025-09-22 02:15:21,018 - augmentations - INFO - AugmentationPipeline initialized: enabled=True, 2d_aug=True, prob=0.7
+2025-09-22 02:15:21,018 - dataset_augmented - INFO - AugmentedTripletFeatureDataset initialized for train split: augmentations_enabled=True, base_dataset_size=9696
+2025-09-22 02:15:21,018 - AST_Triplet_training - INFO - Loading pretrained model: MIT/ast-finetuned-audioset-10-10-0.4593
+2025-09-22 02:15:21,502 - AST_Triplet_training - INFO - MLP Projection Head Architecture: 768 -> 512 -> 128
+2025-09-22 02:15:21,502 - AST_Triplet_training - INFO -   Activation: relu, Dropout: 0.15
+2025-09-22 02:15:21,502 - AST_Triplet_training - INFO -   Total parameters: 459,392
+2025-09-22 02:15:21,502 - AST_Triplet_training - INFO - Model initialized with projection to 128D
+2025-09-22 02:15:21,502 - AST_Triplet_training - INFO - Margin scheduling: 0.5 → 0.5 over 1 epochs
+2025-09-22 02:15:21,502 - AST_Triplet_training - INFO - Negative mining: none
+2025-09-22 02:15:21,611 - AST_Triplet_training - INFO - Starting training for fold 2 with seed 15
+2025-09-22 02:15:22,371 - AST_Triplet_training - INFO - Using stratified batch sampling for training
+2025-09-22 02:15:22,373 - AST_Triplet_training - INFO - Stratified batching: 7 subgenres, 2 guaranteed per subgenre, 10 random slots per batch
+2025-09-22 02:15:22,383 - AST_Triplet_training - INFO - Training started at 2025-09-22 02:15:22
+2025-09-22 02:15:22,383 - AST_Triplet_training - INFO - Epoch 0: Using margin 0.500
+{'eval_accuracy': 0.8247549019607843, 'eval_loss': 0.21722763776779175, 'eval_runtime': 36.8923, 'eval_samples_per_second': 66.355, 'eval_steps_per_second': 8.294, 'epoch': 15.0}
+{'loss': 0.2228, 'grad_norm': 1.1996655464172363, 'learning_rate': 1.865671641791045e-05, 'epoch': 1.0}
+2025-09-22 02:22:55,525 - AST_Triplet_training - INFO - Evaluation - Epoch 1.0, Step 135: eval_loss=0.1470, eval_accuracy=0.883, Elapsed: 7m 33.1s
+2025-09-22 02:22:55,525 - AST_Triplet_training - INFO - Epoch 1: Using margin 0.500
+{'eval_accuracy': 0.8829166666666667, 'eval_loss': 0.14700709283351898, 'epoch': 1.0}
+{'loss': 0.0707, 'grad_norm': 0.7336515784263611, 'learning_rate': 1.7313432835820894e-05, 'epoch': 2.0}
+2025-09-22 02:30:24,845 - AST_Triplet_training - INFO - Evaluation - Epoch 2.0, Step 270: eval_loss=0.1554, eval_accuracy=0.877, Elapsed: 15m 2.5s
+2025-09-22 02:30:24,846 - AST_Triplet_training - INFO - Epoch 2: Using margin 0.500
+{'eval_accuracy': 0.8766666666666667, 'eval_loss': 0.1554320752620697, 'epoch': 2.0}
+{'loss': 0.0514, 'grad_norm': 0.53457111120224, 'learning_rate': 1.5970149253731344e-05, 'epoch': 3.0}
+2025-09-22 02:37:53,500 - AST_Triplet_training - INFO - Evaluation - Epoch 3.0, Step 405: eval_loss=0.1550, eval_accuracy=0.875, Elapsed: 22m 31.1s
+2025-09-22 02:37:53,501 - AST_Triplet_training - INFO - Epoch 3: Using margin 0.500
+{'eval_accuracy': 0.8754166666666666, 'eval_loss': 0.15503180027008057, 'epoch': 3.0}
+{'loss': 0.0381, 'grad_norm': 0.698915958404541, 'learning_rate': 1.4626865671641792e-05, 'epoch': 4.0}
+2025-09-22 02:45:22,272 - AST_Triplet_training - INFO - Evaluation - Epoch 4.0, Step 540: eval_loss=0.1649, eval_accuracy=0.866, Elapsed: 29m 59.9s
+2025-09-22 02:45:22,272 - AST_Triplet_training - INFO - Epoch 4: Using margin 0.500
+{'eval_accuracy': 0.86625, 'eval_loss': 0.16486629843711853, 'epoch': 4.0}
+{'loss': 0.0245, 'grad_norm': 0.4956723749637604, 'learning_rate': 1.328358208955224e-05, 'epoch': 5.0}
+2025-09-22 02:52:51,055 - AST_Triplet_training - INFO - Evaluation - Epoch 5.0, Step 675: eval_loss=0.1522, eval_accuracy=0.876, Elapsed: 37m 28.7s
+2025-09-22 02:52:51,055 - AST_Triplet_training - INFO - Epoch 5: Using margin 0.500
+{'eval_accuracy': 0.87625, 'eval_loss': 0.15223392844200134, 'epoch': 5.0}
+{'loss': 0.0098, 'grad_norm': 0.8400453329086304, 'learning_rate': 1.1940298507462686e-05, 'epoch': 6.0}
+2025-09-22 03:00:19,170 - AST_Triplet_training - INFO - Evaluation - Epoch 6.0, Step 810: eval_loss=0.1618, eval_accuracy=0.866, Elapsed: 44m 56.8s
+2025-09-22 03:00:19,171 - AST_Triplet_training - INFO - Epoch 6: Using margin 0.500
+{'eval_accuracy': 0.86625, 'eval_loss': 0.1618203967809677, 'epoch': 6.0}
+{'loss': 0.005, 'grad_norm': 0.0, 'learning_rate': 1.0597014925373134e-05, 'epoch': 7.0}
+2025-09-22 03:07:47,047 - AST_Triplet_training - INFO - Evaluation - Epoch 7.0, Step 945: eval_loss=0.1722, eval_accuracy=0.864, Elapsed: 52m 24.7s
+2025-09-22 03:07:47,047 - AST_Triplet_training - INFO - Epoch 7: Using margin 0.500
+{'eval_accuracy': 0.86375, 'eval_loss': 0.17223653197288513, 'epoch': 7.0}
+{'loss': 0.0019, 'grad_norm': 0.0, 'learning_rate': 9.253731343283582e-06, 'epoch': 8.0}
+2025-09-22 03:15:15,235 - AST_Triplet_training - INFO - Evaluation - Epoch 8.0, Step 1080: eval_loss=0.1712, eval_accuracy=0.859, Elapsed: 59m 52.9s
+2025-09-22 03:15:15,236 - AST_Triplet_training - INFO - Epoch 8: Using margin 0.500
+{'eval_accuracy': 0.85875, 'eval_loss': 0.17122255265712738, 'epoch': 8.0}
+{'loss': 0.0017, 'grad_norm': 0.0, 'learning_rate': 7.91044776119403e-06, 'epoch': 9.0}
+2025-09-22 03:22:42,976 - AST_Triplet_training - INFO - Evaluation - Epoch 9.0, Step 1215: eval_loss=0.1546, eval_accuracy=0.876, Elapsed: 1h 7m 20.6s
+2025-09-22 03:22:42,977 - AST_Triplet_training - INFO - Epoch 9: Using margin 0.500
+{'eval_accuracy': 0.8758333333333334, 'eval_loss': 0.1546446532011032, 'epoch': 9.0}
+{'loss': 0.0012, 'grad_norm': 0.25813519954681396, 'learning_rate': 6.567164179104478e-06, 'epoch': 10.0}
+2025-09-22 03:30:10,756 - AST_Triplet_training - INFO - Evaluation - Epoch 10.0, Step 1350: eval_loss=0.1559, eval_accuracy=0.877, Elapsed: 1h 14m 48.4s
+2025-09-22 03:30:10,757 - AST_Triplet_training - INFO - Epoch 10: Using margin 0.500
+{'eval_accuracy': 0.8775, 'eval_loss': 0.15588858723640442, 'epoch': 10.0}
+{'loss': 0.0007, 'grad_norm': 0.4609375596046448, 'learning_rate': 5.2238805970149255e-06, 'epoch': 11.0}
+2025-09-22 03:37:38,391 - AST_Triplet_training - INFO - Evaluation - Epoch 11.0, Step 1485: eval_loss=0.1542, eval_accuracy=0.880, Elapsed: 1h 22m 16.0s
+2025-09-22 03:37:38,393 - AST_Triplet_training - INFO - Epoch 11: Using margin 0.500
+{'eval_accuracy': 0.8804166666666666, 'eval_loss': 0.15423065423965454, 'epoch': 11.0}
+{'loss': 0.0007, 'grad_norm': 0.0, 'learning_rate': 3.8805970149253735e-06, 'epoch': 12.0}
+2025-09-22 03:45:06,448 - AST_Triplet_training - INFO - Evaluation - Epoch 12.0, Step 1620: eval_loss=0.1661, eval_accuracy=0.868, Elapsed: 1h 29m 44.1s
+2025-09-22 03:45:06,450 - AST_Triplet_training - INFO - Epoch 12: Using margin 0.500
+{'eval_accuracy': 0.8683333333333333, 'eval_loss': 0.16609284281730652, 'epoch': 12.0}
+{'loss': 0.0007, 'grad_norm': 0.0, 'learning_rate': 2.537313432835821e-06, 'epoch': 13.0}
+2025-09-22 03:52:33,922 - AST_Triplet_training - INFO - Evaluation - Epoch 13.0, Step 1755: eval_loss=0.1727, eval_accuracy=0.860, Elapsed: 1h 37m 11.5s
+2025-09-22 03:52:33,923 - AST_Triplet_training - INFO - Epoch 13: Using margin 0.500
+{'eval_accuracy': 0.86, 'eval_loss': 0.17267487943172455, 'epoch': 13.0}
+{'loss': 0.0004, 'grad_norm': 0.0, 'learning_rate': 1.1940298507462686e-06, 'epoch': 14.0}
+2025-09-22 04:00:01,601 - AST_Triplet_training - INFO - Evaluation - Epoch 14.0, Step 1890: eval_loss=0.1617, eval_accuracy=0.872, Elapsed: 1h 44m 39.2s
+2025-09-22 04:00:01,601 - AST_Triplet_training - INFO - Epoch 14: Using margin 0.500
+{'eval_accuracy': 0.8720833333333333, 'eval_loss': 0.16167116165161133, 'epoch': 14.0}
+{'loss': 0.0002, 'grad_norm': 0.0, 'learning_rate': 0.0, 'epoch': 14.891089108910892}
+2025-09-22 04:06:44,744 - AST_Triplet_training - INFO - Evaluation - Epoch 14.891089108910892, Step 2010: eval_loss=0.1619, eval_accuracy=0.874, Elapsed: 1h 51m 22.4s
+2025-09-22 04:06:44,746 - AST_Triplet_training - INFO - Training completed! Total training time: 1h 51m 22.4s
+2025-09-22 04:06:44,746 - AST_Triplet_training - INFO - Training ended at 2025-09-22 04:06:44
+{'eval_accuracy': 0.8741666666666666, 'eval_loss': 0.1619221270084381, 'epoch': 14.891089108910892}
+{'train_runtime': 6682.3626, 'train_samples_per_second': 21.765, 'train_steps_per_second': 0.301, 'train_loss': 0.028868683379384415, 'epoch': 14.891089108910892}
+2025-09-22 04:07:21,817 - AST_Triplet_training - INFO - Fold 2 completed - Final Accuracy: 0.8742
+2025-09-22 04:07:21,892 - AST_Triplet_training - INFO - 
+============================================================
+2025-09-22 04:07:21,892 - AST_Triplet_training - INFO - TRAINING FOLD 4/5
+2025-09-22 04:07:21,892 - AST_Triplet_training - INFO - ============================================================
+2025-09-22 04:07:21,894 - AST_Triplet_training - INFO - Random seeds set to 16
+2025-09-22 04:07:21,894 - AST_Triplet_training - INFO - Loading K-fold data for fold 3/4
+2025-09-22 04:07:21,894 - AST_Triplet_training - INFO - Loading existing K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 04:07:21,894 - kfold_utils - INFO - Loaded K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 04:07:21,894 - kfold_utils - INFO - Fold 3: 404 train tracks, 100 test tracks
+2025-09-22 04:07:21,894 - kfold_utils - INFO - Generating triplets for fold 3 with seed 19
+2025-09-22 04:07:21,942 - kfold_utils - INFO - Generating training triplets for fold 3...
+2025-09-22 04:07:21,942 - AST_Triplet_training - INFO - Fold_3_train triplet generation config:
+2025-09-22 04:07:21,943 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 04:07:21,943 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 04:07:21,943 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 04:07:21,946 - AST_Triplet_training - INFO - Fold_3_train - Subgenre Chill House: 1560 triplets from 65 tracks
+2025-09-22 04:07:21,948 - AST_Triplet_training - INFO - Fold_3_train - Subgenre Chiller vibe goa: 1032 triplets from 43 tracks
+2025-09-22 04:07:21,951 - AST_Triplet_training - INFO - Fold_3_train - Subgenre Dark Techno: 1656 triplets from 69 tracks
+2025-09-22 04:07:21,953 - AST_Triplet_training - INFO - Fold_3_train - Subgenre Emotional Techno: 1440 triplets from 60 tracks
+2025-09-22 04:07:21,956 - AST_Triplet_training - INFO - Fold_3_train - Subgenre Party Goa: 1200 triplets from 50 tracks
+2025-09-22 04:07:21,958 - AST_Triplet_training - INFO - Fold_3_train - Subgenre Party House: 1320 triplets from 55 tracks
+2025-09-22 04:07:21,961 - AST_Triplet_training - INFO - Fold_3_train - Subgenre Zyzz Music: 1488 triplets from 62 tracks
+2025-09-22 04:07:21,961 - kfold_utils - INFO - Generating test triplets for fold 3...
+2025-09-22 04:07:21,961 - AST_Triplet_training - INFO - Fold_3_test triplet generation config:
+2025-09-22 04:07:21,961 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 04:07:21,961 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 04:07:21,961 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 04:07:21,962 - AST_Triplet_training - INFO - Fold_3_test - Subgenre Chill House: 384 triplets from 16 tracks
+2025-09-22 04:07:21,962 - AST_Triplet_training - INFO - Fold_3_test - Subgenre Chiller vibe goa: 264 triplets from 11 tracks
+2025-09-22 04:07:21,963 - AST_Triplet_training - INFO - Fold_3_test - Subgenre Dark Techno: 408 triplets from 17 tracks
+2025-09-22 04:07:21,964 - AST_Triplet_training - INFO - Fold_3_test - Subgenre Emotional Techno: 360 triplets from 15 tracks
+2025-09-22 04:07:21,964 - AST_Triplet_training - INFO - Fold_3_test - Subgenre Party Goa: 288 triplets from 12 tracks
+2025-09-22 04:07:21,965 - AST_Triplet_training - INFO - Fold_3_test - Subgenre Party House: 336 triplets from 14 tracks
+2025-09-22 04:07:21,965 - AST_Triplet_training - INFO - Fold_3_test - Subgenre Zyzz Music: 360 triplets from 15 tracks
+2025-09-22 04:07:22,074 - AST_Triplet_training - INFO - Initialized dataset (train) with 9696 triplets (resample_train_samples=False)
+2025-09-22 04:07:22,102 - AST_Triplet_training - INFO - Initialized dataset (test) with 2400 triplets (resample_train_samples=False)
+2025-09-22 04:07:22,102 - augmentations - INFO - SpectrogramAugmentations initialized: time_mask=0.3, freq_mask=0.3, noise=0.5, mixup=0.2
+2025-09-22 04:07:22,102 - augmentations - INFO - AST2DSpectrogramAugmentations initialized: freq_mask=0.4, time_mask=0.4
+2025-09-22 04:07:22,102 - augmentations - INFO - AugmentationPipeline initialized: enabled=True, 2d_aug=True, prob=0.7
+2025-09-22 04:07:22,102 - dataset_augmented - INFO - AugmentedTripletFeatureDataset initialized for train split: augmentations_enabled=True, base_dataset_size=9696
+2025-09-22 04:07:22,102 - AST_Triplet_training - INFO - Loading pretrained model: MIT/ast-finetuned-audioset-10-10-0.4593
+2025-09-22 04:07:22,514 - AST_Triplet_training - INFO - MLP Projection Head Architecture: 768 -> 512 -> 128
+2025-09-22 04:07:22,514 - AST_Triplet_training - INFO -   Activation: relu, Dropout: 0.15
+2025-09-22 04:07:22,514 - AST_Triplet_training - INFO -   Total parameters: 459,392
+2025-09-22 04:07:22,514 - AST_Triplet_training - INFO - Model initialized with projection to 128D
+2025-09-22 04:07:22,514 - AST_Triplet_training - INFO - Margin scheduling: 0.5 → 0.5 over 1 epochs
+2025-09-22 04:07:22,514 - AST_Triplet_training - INFO - Negative mining: none
+2025-09-22 04:07:22,625 - AST_Triplet_training - INFO - Starting training for fold 3 with seed 16
+2025-09-22 04:07:23,379 - AST_Triplet_training - INFO - Using stratified batch sampling for training
+2025-09-22 04:07:23,382 - AST_Triplet_training - INFO - Stratified batching: 7 subgenres, 2 guaranteed per subgenre, 10 random slots per batch
+2025-09-22 04:07:23,391 - AST_Triplet_training - INFO - Training started at 2025-09-22 04:07:23
+2025-09-22 04:07:23,391 - AST_Triplet_training - INFO - Epoch 0: Using margin 0.500
+{'eval_accuracy': 0.8741666666666666, 'eval_loss': 0.1619221270084381, 'eval_runtime': 36.1707, 'eval_samples_per_second': 66.352, 'eval_steps_per_second': 8.294, 'epoch': 14.891089108910892}
+{'loss': 0.2173, 'grad_norm': 1.6300817728042603, 'learning_rate': 1.865671641791045e-05, 'epoch': 1.0}
+2025-09-22 04:14:56,363 - AST_Triplet_training - INFO - Evaluation - Epoch 1.0, Step 135: eval_loss=0.2102, eval_accuracy=0.829, Elapsed: 7m 33.0s
+2025-09-22 04:14:56,364 - AST_Triplet_training - INFO - Epoch 1: Using margin 0.500
+{'eval_accuracy': 0.82875, 'eval_loss': 0.21021926403045654, 'epoch': 1.0}
+{'loss': 0.0673, 'grad_norm': 1.0874254703521729, 'learning_rate': 1.7313432835820894e-05, 'epoch': 2.0}
+2025-09-22 04:22:26,186 - AST_Triplet_training - INFO - Evaluation - Epoch 2.0, Step 270: eval_loss=0.1917, eval_accuracy=0.838, Elapsed: 15m 2.8s
+2025-09-22 04:22:26,187 - AST_Triplet_training - INFO - Epoch 2: Using margin 0.500
+{'eval_accuracy': 0.8383333333333334, 'eval_loss': 0.19173415005207062, 'epoch': 2.0}
+{'loss': 0.0416, 'grad_norm': 0.0, 'learning_rate': 1.5970149253731344e-05, 'epoch': 3.0}
+2025-09-22 04:29:55,019 - AST_Triplet_training - INFO - Evaluation - Epoch 3.0, Step 405: eval_loss=0.1827, eval_accuracy=0.845, Elapsed: 22m 31.6s
+2025-09-22 04:29:55,020 - AST_Triplet_training - INFO - Epoch 3: Using margin 0.500
+{'eval_accuracy': 0.845, 'eval_loss': 0.1826668083667755, 'epoch': 3.0}
+{'loss': 0.0212, 'grad_norm': 0.8694652318954468, 'learning_rate': 1.4626865671641792e-05, 'epoch': 4.0}
+2025-09-22 04:37:24,024 - AST_Triplet_training - INFO - Evaluation - Epoch 4.0, Step 540: eval_loss=0.2012, eval_accuracy=0.832, Elapsed: 30m 0.6s
+2025-09-22 04:37:24,026 - AST_Triplet_training - INFO - Epoch 4: Using margin 0.500
+{'eval_accuracy': 0.8316666666666667, 'eval_loss': 0.20116004347801208, 'epoch': 4.0}
+{'loss': 0.0093, 'grad_norm': 0.0, 'learning_rate': 1.328358208955224e-05, 'epoch': 5.0}
+2025-09-22 04:44:52,361 - AST_Triplet_training - INFO - Evaluation - Epoch 5.0, Step 675: eval_loss=0.1783, eval_accuracy=0.854, Elapsed: 37m 29.0s
+2025-09-22 04:44:52,362 - AST_Triplet_training - INFO - Epoch 5: Using margin 0.500
+{'eval_accuracy': 0.8541666666666666, 'eval_loss': 0.17828701436519623, 'epoch': 5.0}
+{'loss': 0.0058, 'grad_norm': 0.6057326793670654, 'learning_rate': 1.1940298507462686e-05, 'epoch': 6.0}
+2025-09-22 04:52:20,865 - AST_Triplet_training - INFO - Evaluation - Epoch 6.0, Step 810: eval_loss=0.1869, eval_accuracy=0.849, Elapsed: 44m 57.5s
+2025-09-22 04:52:20,865 - AST_Triplet_training - INFO - Epoch 6: Using margin 0.500
+{'eval_accuracy': 0.8491666666666666, 'eval_loss': 0.18691137433052063, 'epoch': 6.0}
+{'loss': 0.0038, 'grad_norm': 0.0, 'learning_rate': 1.0597014925373134e-05, 'epoch': 7.0}
+2025-09-22 04:59:48,980 - AST_Triplet_training - INFO - Evaluation - Epoch 7.0, Step 945: eval_loss=0.2072, eval_accuracy=0.825, Elapsed: 52m 25.6s
+2025-09-22 04:59:48,981 - AST_Triplet_training - INFO - Epoch 7: Using margin 0.500
+{'eval_accuracy': 0.8254166666666667, 'eval_loss': 0.20724882185459137, 'epoch': 7.0}
+{'loss': 0.0034, 'grad_norm': 0.0, 'learning_rate': 9.253731343283582e-06, 'epoch': 8.0}
+2025-09-22 05:07:16,898 - AST_Triplet_training - INFO - Evaluation - Epoch 8.0, Step 1080: eval_loss=0.2004, eval_accuracy=0.837, Elapsed: 59m 53.5s
+2025-09-22 05:07:16,898 - AST_Triplet_training - INFO - Epoch 8: Using margin 0.500
+{'eval_accuracy': 0.8366666666666667, 'eval_loss': 0.20038630068302155, 'epoch': 8.0}
+{'loss': 0.0024, 'grad_norm': 0.327239990234375, 'learning_rate': 7.91044776119403e-06, 'epoch': 9.0}
+2025-09-22 05:14:45,111 - AST_Triplet_training - INFO - Evaluation - Epoch 9.0, Step 1215: eval_loss=0.1946, eval_accuracy=0.846, Elapsed: 1h 7m 21.7s
+2025-09-22 05:14:45,111 - AST_Triplet_training - INFO - Epoch 9: Using margin 0.500
+{'eval_accuracy': 0.84625, 'eval_loss': 0.19460846483707428, 'epoch': 9.0}
+{'loss': 0.0026, 'grad_norm': 0.0, 'learning_rate': 6.567164179104478e-06, 'epoch': 10.0}
+2025-09-22 05:22:13,239 - AST_Triplet_training - INFO - Evaluation - Epoch 10.0, Step 1350: eval_loss=0.1989, eval_accuracy=0.833, Elapsed: 1h 14m 49.8s
+2025-09-22 05:22:13,240 - AST_Triplet_training - INFO - Epoch 10: Using margin 0.500
+{'eval_accuracy': 0.8329166666666666, 'eval_loss': 0.19885019958019257, 'epoch': 10.0}
+{'loss': 0.0015, 'grad_norm': 0.0, 'learning_rate': 5.2238805970149255e-06, 'epoch': 11.0}
+2025-09-22 05:29:41,068 - AST_Triplet_training - INFO - Evaluation - Epoch 11.0, Step 1485: eval_loss=0.1985, eval_accuracy=0.841, Elapsed: 1h 22m 17.7s
+2025-09-22 05:29:41,068 - AST_Triplet_training - INFO - Epoch 11: Using margin 0.500
+{'eval_accuracy': 0.84125, 'eval_loss': 0.19854946434497833, 'epoch': 11.0}
+{'loss': 0.0014, 'grad_norm': 0.0, 'learning_rate': 3.8805970149253735e-06, 'epoch': 12.0}
+2025-09-22 05:37:09,186 - AST_Triplet_training - INFO - Evaluation - Epoch 12.0, Step 1620: eval_loss=0.1909, eval_accuracy=0.839, Elapsed: 1h 29m 45.8s
+2025-09-22 05:37:09,187 - AST_Triplet_training - INFO - Epoch 12: Using margin 0.500
+{'eval_accuracy': 0.83875, 'eval_loss': 0.1908821165561676, 'epoch': 12.0}
+{'loss': 0.0011, 'grad_norm': 0.0, 'learning_rate': 2.537313432835821e-06, 'epoch': 13.0}
+2025-09-22 05:44:36,895 - AST_Triplet_training - INFO - Evaluation - Epoch 13.0, Step 1755: eval_loss=0.1952, eval_accuracy=0.832, Elapsed: 1h 37m 13.5s
+2025-09-22 05:44:36,896 - AST_Triplet_training - INFO - Epoch 13: Using margin 0.500
+{'eval_accuracy': 0.8316666666666667, 'eval_loss': 0.19523124396800995, 'epoch': 13.0}
+{'loss': 0.0009, 'grad_norm': 0.30683445930480957, 'learning_rate': 1.1940298507462686e-06, 'epoch': 14.0}
+2025-09-22 05:52:04,895 - AST_Triplet_training - INFO - Evaluation - Epoch 14.0, Step 1890: eval_loss=0.1999, eval_accuracy=0.831, Elapsed: 1h 44m 41.5s
+2025-09-22 05:52:04,895 - AST_Triplet_training - INFO - Epoch 14: Using margin 0.500
+{'eval_accuracy': 0.8308333333333333, 'eval_loss': 0.19985726475715637, 'epoch': 14.0}
+{'loss': 0.0006, 'grad_norm': 0.0, 'learning_rate': 0.0, 'epoch': 14.891089108910892}
+2025-09-22 05:58:48,296 - AST_Triplet_training - INFO - Evaluation - Epoch 14.891089108910892, Step 2010: eval_loss=0.2007, eval_accuracy=0.831, Elapsed: 1h 51m 24.9s
+2025-09-22 05:58:48,297 - AST_Triplet_training - INFO - Training completed! Total training time: 1h 51m 24.9s
+2025-09-22 05:58:48,297 - AST_Triplet_training - INFO - Training ended at 2025-09-22 05:58:48
+{'eval_accuracy': 0.8308333333333333, 'eval_loss': 0.2007431983947754, 'epoch': 14.891089108910892}
+{'train_runtime': 6684.9068, 'train_samples_per_second': 21.756, 'train_steps_per_second': 0.301, 'train_loss': 0.025533906589100017, 'epoch': 14.891089108910892}
+2025-09-22 05:59:27,889 - AST_Triplet_training - INFO - Fold 3 completed - Final Accuracy: 0.8308
+2025-09-22 05:59:27,890 - AST_Triplet_training - INFO - 
+============================================================
+2025-09-22 05:59:27,890 - AST_Triplet_training - INFO - TRAINING FOLD 5/5
+2025-09-22 05:59:27,890 - AST_Triplet_training - INFO - ============================================================
+2025-09-22 05:59:27,896 - AST_Triplet_training - INFO - Random seeds set to 17
+2025-09-22 05:59:27,896 - AST_Triplet_training - INFO - Loading K-fold data for fold 4/4
+2025-09-22 05:59:27,896 - AST_Triplet_training - INFO - Loading existing K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 05:59:27,896 - kfold_utils - INFO - Loaded K-fold partitions from kfold_results/kfold_20250921_223138/kfold_partitions.json
+2025-09-22 05:59:27,896 - kfold_utils - INFO - Fold 4: 406 train tracks, 98 test tracks
+2025-09-22 05:59:27,896 - kfold_utils - INFO - Generating triplets for fold 4 with seed 21
+2025-09-22 05:59:27,948 - kfold_utils - INFO - Generating training triplets for fold 4...
+2025-09-22 05:59:27,948 - AST_Triplet_training - INFO - Fold_4_train triplet generation config:
+2025-09-22 05:59:27,948 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 05:59:27,948 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 05:59:27,948 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 05:59:27,951 - AST_Triplet_training - INFO - Fold_4_train - Subgenre Chill House: 1560 triplets from 65 tracks
+2025-09-22 05:59:27,954 - AST_Triplet_training - INFO - Fold_4_train - Subgenre Chiller vibe goa: 1056 triplets from 44 tracks
+2025-09-22 05:59:27,957 - AST_Triplet_training - INFO - Fold_4_train - Subgenre Dark Techno: 1656 triplets from 69 tracks
+2025-09-22 05:59:27,960 - AST_Triplet_training - INFO - Fold_4_train - Subgenre Emotional Techno: 1440 triplets from 60 tracks
+2025-09-22 05:59:27,963 - AST_Triplet_training - INFO - Fold_4_train - Subgenre Party Goa: 1200 triplets from 50 tracks
+2025-09-22 05:59:27,966 - AST_Triplet_training - INFO - Fold_4_train - Subgenre Party House: 1344 triplets from 56 tracks
+2025-09-22 05:59:27,969 - AST_Triplet_training - INFO - Fold_4_train - Subgenre Zyzz Music: 1488 triplets from 62 tracks
+2025-09-22 05:59:27,969 - kfold_utils - INFO - Generating test triplets for fold 4...
+2025-09-22 05:59:27,969 - AST_Triplet_training - INFO - Fold_4_test triplet generation config:
+2025-09-22 05:59:27,969 - AST_Triplet_training - INFO -   Max positive tracks per anchor: 6
+2025-09-22 05:59:27,969 - AST_Triplet_training - INFO -   Triplets per positive track: 2
+2025-09-22 05:59:27,969 - AST_Triplet_training - INFO -   Expected triplets per anchor: ~12
+2025-09-22 05:59:27,970 - AST_Triplet_training - INFO - Fold_4_test - Subgenre Chill House: 384 triplets from 16 tracks
+2025-09-22 05:59:27,970 - AST_Triplet_training - INFO - Fold_4_test - Subgenre Chiller vibe goa: 240 triplets from 10 tracks
+2025-09-22 05:59:27,971 - AST_Triplet_training - INFO - Fold_4_test - Subgenre Dark Techno: 408 triplets from 17 tracks
+2025-09-22 05:59:27,972 - AST_Triplet_training - INFO - Fold_4_test - Subgenre Emotional Techno: 360 triplets from 15 tracks
+2025-09-22 05:59:27,972 - AST_Triplet_training - INFO - Fold_4_test - Subgenre Party Goa: 288 triplets from 12 tracks
+2025-09-22 05:59:27,973 - AST_Triplet_training - INFO - Fold_4_test - Subgenre Party House: 312 triplets from 13 tracks
+2025-09-22 05:59:27,974 - AST_Triplet_training - INFO - Fold_4_test - Subgenre Zyzz Music: 360 triplets from 15 tracks
+2025-09-22 05:59:28,103 - AST_Triplet_training - INFO - Initialized dataset (train) with 9744 triplets (resample_train_samples=False)
+2025-09-22 05:59:28,130 - AST_Triplet_training - INFO - Initialized dataset (test) with 2352 triplets (resample_train_samples=False)
+2025-09-22 05:59:28,130 - augmentations - INFO - SpectrogramAugmentations initialized: time_mask=0.3, freq_mask=0.3, noise=0.5, mixup=0.2
+2025-09-22 05:59:28,130 - augmentations - INFO - AST2DSpectrogramAugmentations initialized: freq_mask=0.4, time_mask=0.4
+2025-09-22 05:59:28,130 - augmentations - INFO - AugmentationPipeline initialized: enabled=True, 2d_aug=True, prob=0.7
+2025-09-22 05:59:28,131 - dataset_augmented - INFO - AugmentedTripletFeatureDataset initialized for train split: augmentations_enabled=True, base_dataset_size=9744
+2025-09-22 05:59:28,131 - AST_Triplet_training - INFO - Loading pretrained model: MIT/ast-finetuned-audioset-10-10-0.4593
+2025-09-22 05:59:28,592 - AST_Triplet_training - INFO - MLP Projection Head Architecture: 768 -> 512 -> 128
+2025-09-22 05:59:28,593 - AST_Triplet_training - INFO -   Activation: relu, Dropout: 0.15
+2025-09-22 05:59:28,593 - AST_Triplet_training - INFO -   Total parameters: 459,392
+2025-09-22 05:59:28,593 - AST_Triplet_training - INFO - Model initialized with projection to 128D
+2025-09-22 05:59:28,593 - AST_Triplet_training - INFO - Margin scheduling: 0.5 → 0.5 over 1 epochs
+2025-09-22 05:59:28,593 - AST_Triplet_training - INFO - Negative mining: none
+2025-09-22 05:59:28,829 - AST_Triplet_training - INFO - Starting training for fold 4 with seed 17
+2025-09-22 05:59:29,858 - AST_Triplet_training - INFO - Using stratified batch sampling for training
+2025-09-22 05:59:29,862 - AST_Triplet_training - INFO - Stratified batching: 7 subgenres, 2 guaranteed per subgenre, 10 random slots per batch
+2025-09-22 05:59:29,872 - AST_Triplet_training - INFO - Training started at 2025-09-22 05:59:29
+2025-09-22 05:59:29,873 - AST_Triplet_training - INFO - Epoch 0: Using margin 0.500
+{'eval_accuracy': 0.8308333333333333, 'eval_loss': 0.2007431983947754, 'eval_runtime': 36.381, 'eval_samples_per_second': 65.968, 'eval_steps_per_second': 8.246, 'epoch': 14.891089108910892}
+{'loss': 0.2194, 'grad_norm': 1.196244716644287, 'learning_rate': 1.865679012345679e-05, 'epoch': 1.0}
+2025-09-22 06:07:04,551 - AST_Triplet_training - INFO - Evaluation - Epoch 1.0, Step 136: eval_loss=0.1650, eval_accuracy=0.861, Elapsed: 7m 34.7s
+2025-09-22 06:07:04,551 - AST_Triplet_training - INFO - Epoch 1: Using margin 0.500
+{'eval_accuracy': 0.8605442176870748, 'eval_loss': 0.16495975852012634, 'epoch': 1.0}
+{'loss': 0.061, 'grad_norm': 0.42365261912345886, 'learning_rate': 1.7313580246913582e-05, 'epoch': 2.0}
+2025-09-22 06:14:34,981 - AST_Triplet_training - INFO - Evaluation - Epoch 2.0, Step 272: eval_loss=0.1666, eval_accuracy=0.857, Elapsed: 15m 5.1s
+2025-09-22 06:14:34,982 - AST_Triplet_training - INFO - Epoch 2: Using margin 0.500
+{'eval_accuracy': 0.85671768707483, 'eval_loss': 0.166575089097023, 'epoch': 2.0}
+{'loss': 0.0307, 'grad_norm': 0.3352973759174347, 'learning_rate': 1.597037037037037e-05, 'epoch': 3.0}
+2025-09-22 06:22:05,215 - AST_Triplet_training - INFO - Evaluation - Epoch 3.0, Step 408: eval_loss=0.1732, eval_accuracy=0.859, Elapsed: 22m 35.3s
+2025-09-22 06:22:05,216 - AST_Triplet_training - INFO - Epoch 3: Using margin 0.500
+{'eval_accuracy': 0.858843537414966, 'eval_loss': 0.17320223152637482, 'epoch': 3.0}
+{'loss': 0.0211, 'grad_norm': 1.1366794109344482, 'learning_rate': 1.4627160493827162e-05, 'epoch': 4.0}
+2025-09-22 06:29:34,848 - AST_Triplet_training - INFO - Evaluation - Epoch 4.0, Step 544: eval_loss=0.1775, eval_accuracy=0.857, Elapsed: 30m 5.0s
+2025-09-22 06:29:34,848 - AST_Triplet_training - INFO - Epoch 4: Using margin 0.500
+{'eval_accuracy': 0.85671768707483, 'eval_loss': 0.17749923467636108, 'epoch': 4.0}
+{'loss': 0.0127, 'grad_norm': 0.3758014738559723, 'learning_rate': 1.3283950617283951e-05, 'epoch': 5.0}
+2025-09-22 06:37:04,107 - AST_Triplet_training - INFO - Evaluation - Epoch 5.0, Step 680: eval_loss=0.1950, eval_accuracy=0.834, Elapsed: 37m 34.2s
+2025-09-22 06:37:04,107 - AST_Triplet_training - INFO - Epoch 5: Using margin 0.500
+{'eval_accuracy': 0.8337585034013606, 'eval_loss': 0.19500423967838287, 'epoch': 5.0}
+{'loss': 0.0058, 'grad_norm': 0.0, 'learning_rate': 1.1940740740740741e-05, 'epoch': 6.0}
+2025-09-22 06:44:33,630 - AST_Triplet_training - INFO - Evaluation - Epoch 6.0, Step 816: eval_loss=0.1821, eval_accuracy=0.850, Elapsed: 45m 3.8s
+2025-09-22 06:44:33,630 - AST_Triplet_training - INFO - Epoch 6: Using margin 0.500
+{'eval_accuracy': 0.8499149659863946, 'eval_loss': 0.18207332491874695, 'epoch': 6.0}
+{'loss': 0.0043, 'grad_norm': 0.8739979863166809, 'learning_rate': 1.0597530864197531e-05, 'epoch': 7.0}
+2025-09-22 06:52:03,237 - AST_Triplet_training - INFO - Evaluation - Epoch 7.0, Step 952: eval_loss=0.1929, eval_accuracy=0.835, Elapsed: 52m 33.4s
+2025-09-22 06:52:03,238 - AST_Triplet_training - INFO - Epoch 7: Using margin 0.500
+{'eval_accuracy': 0.8350340136054422, 'eval_loss': 0.19288235902786255, 'epoch': 7.0}
+{'loss': 0.0033, 'grad_norm': 0.0, 'learning_rate': 9.254320987654322e-06, 'epoch': 8.0}
+2025-09-22 06:59:32,563 - AST_Triplet_training - INFO - Evaluation - Epoch 8.0, Step 1088: eval_loss=0.1790, eval_accuracy=0.858, Elapsed: 1h 0m 2.7s
+2025-09-22 06:59:32,564 - AST_Triplet_training - INFO - Epoch 8: Using margin 0.500
+{'eval_accuracy': 0.8579931972789115, 'eval_loss': 0.17895546555519104, 'epoch': 8.0}
+{'loss': 0.0019, 'grad_norm': 0.0, 'learning_rate': 7.911111111111112e-06, 'epoch': 9.0}
+2025-09-22 07:07:01,894 - AST_Triplet_training - INFO - Evaluation - Epoch 9.0, Step 1224: eval_loss=0.1807, eval_accuracy=0.850, Elapsed: 1h 7m 32.0s
+2025-09-22 07:07:01,895 - AST_Triplet_training - INFO - Epoch 9: Using margin 0.500
+{'eval_accuracy': 0.8503401360544217, 'eval_loss': 0.1806964874267578, 'epoch': 9.0}
+{'loss': 0.0015, 'grad_norm': 0.0, 'learning_rate': 6.567901234567902e-06, 'epoch': 10.0}
+2025-09-22 07:14:31,375 - AST_Triplet_training - INFO - Evaluation - Epoch 10.0, Step 1360: eval_loss=0.1811, eval_accuracy=0.849, Elapsed: 1h 15m 1.5s
+2025-09-22 07:14:31,375 - AST_Triplet_training - INFO - Epoch 10: Using margin 0.500
+{'eval_accuracy': 0.8494897959183674, 'eval_loss': 0.18108652532100677, 'epoch': 10.0}
+{'loss': 0.0012, 'grad_norm': 0.0, 'learning_rate': 5.224691358024691e-06, 'epoch': 11.0}
+2025-09-22 07:22:00,496 - AST_Triplet_training - INFO - Evaluation - Epoch 11.0, Step 1496: eval_loss=0.1874, eval_accuracy=0.849, Elapsed: 1h 22m 30.6s
+2025-09-22 07:22:00,496 - AST_Triplet_training - INFO - Epoch 11: Using margin 0.500
+{'eval_accuracy': 0.8490646258503401, 'eval_loss': 0.1873672753572464, 'epoch': 11.0}
+{'loss': 0.0014, 'grad_norm': 0.0, 'learning_rate': 3.8814814814814816e-06, 'epoch': 12.0}
+2025-09-22 07:29:29,752 - AST_Triplet_training - INFO - Evaluation - Epoch 12.0, Step 1632: eval_loss=0.1915, eval_accuracy=0.845, Elapsed: 1h 29m 59.9s
+2025-09-22 07:29:29,752 - AST_Triplet_training - INFO - Epoch 12: Using margin 0.500
+{'eval_accuracy': 0.844812925170068, 'eval_loss': 0.19150477647781372, 'epoch': 12.0}
+{'loss': 0.0009, 'grad_norm': 0.0, 'learning_rate': 2.5382716049382718e-06, 'epoch': 13.0}
+2025-09-22 07:36:59,259 - AST_Triplet_training - INFO - Evaluation - Epoch 13.0, Step 1768: eval_loss=0.1874, eval_accuracy=0.848, Elapsed: 1h 37m 29.4s
+2025-09-22 07:36:59,261 - AST_Triplet_training - INFO - Epoch 13: Using margin 0.500
+{'eval_accuracy': 0.8477891156462585, 'eval_loss': 0.18735522031784058, 'epoch': 13.0}
+{'loss': 0.0009, 'grad_norm': 0.0, 'learning_rate': 1.1950617283950618e-06, 'epoch': 14.0}
+2025-09-22 07:44:28,631 - AST_Triplet_training - INFO - Evaluation - Epoch 14.0, Step 1904: eval_loss=0.1890, eval_accuracy=0.844, Elapsed: 1h 44m 58.8s
+2025-09-22 07:44:28,632 - AST_Triplet_training - INFO - Epoch 14: Using margin 0.500
+{'eval_accuracy': 0.8435374149659864, 'eval_loss': 0.18902532756328583, 'epoch': 14.0}
+{'loss': 0.0008, 'grad_norm': 0.2851347327232361, 'learning_rate': 0.0, 'epoch': 14.894088669950738}
+2025-09-22 07:51:14,185 - AST_Triplet_training - INFO - Evaluation - Epoch 14.894088669950738, Step 2025: eval_loss=0.1886, eval_accuracy=0.847, Elapsed: 1h 51m 44.3s
+2025-09-22 07:51:14,188 - AST_Triplet_training - INFO - Training completed! Total training time: 1h 51m 44.3s
+2025-09-22 07:51:14,188 - AST_Triplet_training - INFO - Training ended at 2025-09-22 07:51:14
+{'eval_accuracy': 0.8465136054421769, 'eval_loss': 0.1886352002620697, 'epoch': 14.894088669950738}
+{'train_runtime': 6704.314, 'train_samples_per_second': 21.801, 'train_steps_per_second': 0.302, 'train_loss': 0.02463165816701489, 'epoch': 14.894088669950738}
+2025-09-22 07:51:52,719 - AST_Triplet_training - INFO - Fold 4 completed - Final Accuracy: 0.8465
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - 
+================================================================================
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - K-FOLD CROSS-VALIDATION RESULTS
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - ================================================================================
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - Mean Accuracy: 0.8434 ± 0.0171
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - Accuracy Range: 0.8248 - 0.8742
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - Mean Loss: 0.1929 ± 0.0181
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - Successful Folds: 5/5
+2025-09-22 07:51:52,721 - AST_Triplet_training - INFO - Individual Accuracies: ['0.8405', '0.8248', '0.8742', '0.8308', '0.8465']
+2025-09-22 07:51:52,723 - AST_Triplet_training - INFO - Aggregated training curves saved to: kfold_results/kfold_20250921_223138/aggregated_training_curves.json
+2025-09-22 07:51:52,725 - AST_Triplet_training - INFO - 
+K-fold experiment complete! Results saved to: kfold_results/kfold_20250921_223138
+{'eval_accuracy': 0.8465136054421769, 'eval_loss': 0.1886352002620697, 'eval_runtime': 35.7434, 'eval_samples_per_second': 65.802, 'eval_steps_per_second': 8.225, 'epoch': 14.894088669950738}
+
+K-FOLD RESULTS:
+Mean Accuracy: 0.8434 ± 0.0171
+Results saved to: kfold_results/kfold_20250921_223138
+[INFO] Collecting artifacts to /homes/nnebeling/thesis/runs/ast-a40.163134 ...
+[DONE] Everything copied to: /homes/nnebeling/thesis/runs/ast-a40.163134
+Job runtime: 33627 seconds (09:20:27)

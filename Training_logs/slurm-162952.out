@@ -1,0 +1,167 @@
+[INFO] SLURM_JOB_TMP is: /local/slurmjobs/162952
+[INFO] Using GPU: 0
+[INFO] Staging archive to node SSD...
+'/homes/nnebeling/thesis/precomputed_7G_2Chunk.zip' -> '/local/slurmjobs/162952/precomputed_7G_2Chunk.zip'
+[INFO] Unpacking on SSD...
+[OK] Unpacked. Top-level contents:
+.
+precomputed_7G_2Chunk
+precomputed_7G_2Chunk/Party House
+precomputed_7G_2Chunk/Party Goa
+precomputed_7G_2Chunk/Dark Techno
+precomputed_7G_2Chunk/Zyzz Music
+precomputed_7G_2Chunk/Chill House
+precomputed_7G_2Chunk/Emotional Techno
+precomputed_7G_2Chunk/Chiller vibe goa
+[INFO] Starting training...
+2025-09-19 09:34:28,275 - __main__ - INFO - Loading configuration...
+2025-09-19 09:34:28,277 - __main__ - INFO - set_float32_matmul_precision=high
+2025-09-19 09:34:28,277 - __main__ - INFO - TF32: matmul=True, cudnn=True
+2025-09-19 09:34:28,729 - __main__ - INFO - Experiment: Testing 2 chunks per track
+2025-09-19 09:34:28,729 - __main__ - INFO - Description: Dataset size 2x4
+2025-09-19 09:34:28,733 - __main__ - INFO - Random seeds set to 23
+2025-09-19 09:34:28,733 - __main__ - INFO - Loading data splits...
+2025-09-19 09:34:28,734 - __main__ - INFO - Generating train/test splits from preprocessed features
+2025-09-19 09:34:28,734 - __main__ - INFO - Generating track-level splits to prevent data leakage...
+2025-09-19 09:34:28,735 - __main__ - INFO - Subgenre Chill House: 81 tracks, 162 chunks total
+2025-09-19 09:34:28,736 - __main__ - INFO - Subgenre Chiller vibe goa: 54 tracks, 108 chunks total
+2025-09-19 09:34:28,737 - __main__ - INFO - Subgenre Dark Techno: 86 tracks, 172 chunks total
+2025-09-19 09:34:28,738 - __main__ - INFO - Subgenre Emotional Techno: 75 tracks, 150 chunks total
+2025-09-19 09:34:28,739 - __main__ - INFO - Subgenre Party Goa: 62 tracks, 124 chunks total
+2025-09-19 09:34:28,740 - __main__ - INFO - Subgenre Party House: 69 tracks, 138 chunks total
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Zyzz Music: 77 tracks, 154 chunks total
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Chill House: 65 train tracks, 16 test tracks
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Chiller vibe goa: 44 train tracks, 10 test tracks
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Dark Techno: 69 train tracks, 17 test tracks
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Emotional Techno: 60 train tracks, 15 test tracks
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Party Goa: 50 train tracks, 12 test tracks
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Party House: 56 train tracks, 13 test tracks
+2025-09-19 09:34:28,741 - __main__ - INFO - Subgenre Zyzz Music: 62 train tracks, 15 test tracks
+2025-09-19 09:34:28,741 - __main__ - INFO - Generating training triplets from train tracks...
+2025-09-19 09:34:28,741 - __main__ - INFO - Train triplet generation config:
+2025-09-19 09:34:28,741 - __main__ - INFO -   Max positive tracks per anchor: 4
+2025-09-19 09:34:28,742 - __main__ - INFO -   Triplets per positive track: 2
+2025-09-19 09:34:28,742 - __main__ - INFO -   Expected triplets per anchor: ~8
+2025-09-19 09:34:28,744 - __main__ - INFO - Train - Subgenre Chill House: 1040 triplets from 65 tracks
+2025-09-19 09:34:28,745 - __main__ - INFO - Train - Subgenre Chiller vibe goa: 704 triplets from 44 tracks
+2025-09-19 09:34:28,747 - __main__ - INFO - Train - Subgenre Dark Techno: 1104 triplets from 69 tracks
+2025-09-19 09:34:28,749 - __main__ - INFO - Train - Subgenre Emotional Techno: 960 triplets from 60 tracks
+2025-09-19 09:34:28,751 - __main__ - INFO - Train - Subgenre Party Goa: 800 triplets from 50 tracks
+2025-09-19 09:34:28,753 - __main__ - INFO - Train - Subgenre Party House: 896 triplets from 56 tracks
+2025-09-19 09:34:28,755 - __main__ - INFO - Train - Subgenre Zyzz Music: 992 triplets from 62 tracks
+2025-09-19 09:34:28,755 - __main__ - INFO - Generating test triplets from test tracks...
+2025-09-19 09:34:28,755 - __main__ - INFO - Test triplet generation config:
+2025-09-19 09:34:28,755 - __main__ - INFO -   Max positive tracks per anchor: 4
+2025-09-19 09:34:28,755 - __main__ - INFO -   Triplets per positive track: 2
+2025-09-19 09:34:28,755 - __main__ - INFO -   Expected triplets per anchor: ~8
+2025-09-19 09:34:28,755 - __main__ - INFO - Test - Subgenre Chill House: 256 triplets from 16 tracks
+2025-09-19 09:34:28,756 - __main__ - INFO - Test - Subgenre Chiller vibe goa: 160 triplets from 10 tracks
+2025-09-19 09:34:28,756 - __main__ - INFO - Test - Subgenre Dark Techno: 272 triplets from 17 tracks
+2025-09-19 09:34:28,757 - __main__ - INFO - Test - Subgenre Emotional Techno: 240 triplets from 15 tracks
+2025-09-19 09:34:28,757 - __main__ - INFO - Test - Subgenre Party Goa: 192 triplets from 12 tracks
+2025-09-19 09:34:28,757 - __main__ - INFO - Test - Subgenre Party House: 208 triplets from 13 tracks
+2025-09-19 09:34:28,758 - __main__ - INFO - Test - Subgenre Zyzz Music: 240 triplets from 15 tracks
+2025-09-19 09:34:28,758 - __main__ - INFO - ✓ NO DATA LEAKAGE: 406 unique train tracks, 98 unique test tracks
+2025-09-19 09:34:28,758 - __main__ - INFO - Total: 6496 train triplets, 1568 test triplets
+2025-09-19 09:34:28,758 - __main__ - INFO - Creating datasets...
+2025-09-19 09:34:28,832 - __main__ - INFO - Initialized dataset (train) with 6496 triplets (resample_train_samples=False)
+2025-09-19 09:34:28,850 - __main__ - INFO - Initialized dataset (test) with 1568 triplets (resample_train_samples=False)
+2025-09-19 09:34:28,850 - __main__ - INFO - Initializing model...
+2025-09-19 09:34:28,850 - __main__ - INFO - Using device: cuda
+2025-09-19 09:34:28,850 - __main__ - INFO - Loading pretrained model: MIT/ast-finetuned-audioset-10-10-0.4593
+2025-09-19 09:34:30,908 - __main__ - INFO - MLP Projection Head Architecture: 768 -> 512 -> 128
+2025-09-19 09:34:30,908 - __main__ - INFO -   Activation: relu, Dropout: 0.15
+2025-09-19 09:34:30,908 - __main__ - INFO -   Total parameters: 459,392
+2025-09-19 09:34:30,908 - __main__ - INFO - Model initialized with projection to 128D
+2025-09-19 09:34:30,908 - __main__ - INFO - Margin scheduling: 0.5 → 0.5 over 1 epochs
+2025-09-19 09:34:30,908 - __main__ - INFO - Negative mining: none
+2025-09-19 09:34:31,277 - __main__ - INFO - Using custom dual-group optimizer with sophisticated LR scheduling
+2025-09-19 09:34:31,278 - lr_scheduler - INFO - Parameter groups created:
+2025-09-19 09:34:31,278 - lr_scheduler - INFO -   Base parameters: 199 tensors
+2025-09-19 09:34:31,278 - lr_scheduler - INFO -   Head parameters: 4 tensors
+2025-09-19 09:34:31,278 - lr_scheduler - INFO - Dual group optimizer created:
+2025-09-19 09:34:31,278 - lr_scheduler - INFO -   Base LR: 2.00e-05
+2025-09-19 09:34:31,278 - lr_scheduler - INFO -   Head LR: 2.00e-05 (1.0x multiplier)
+2025-09-19 09:34:31,278 - __main__ - INFO - Precision summary -> bf16=True, fp16=False, tf32=True
+2025-09-19 09:34:31,304 - __main__ - INFO - Early stopping enabled: patience=3, min_delta=0.01, post_resample_grace=2
+2025-09-19 09:34:31,304 - lr_scheduler - INFO - PyTorch LambdaLR scheduler created:
+2025-09-19 09:34:31,305 - lr_scheduler - INFO -   Base LR: 2.00e-05
+2025-09-19 09:34:31,305 - lr_scheduler - INFO -   Head LR multiplier: 1.0x
+2025-09-19 09:34:31,305 - lr_scheduler - INFO -   Multiplier converges to 1.0 at epoch 1
+2025-09-19 09:34:31,305 - lr_scheduler - INFO -   Warmup steps: 91 (10.0%)
+2025-09-19 09:34:31,305 - lr_scheduler - INFO -   Total steps: 910
+2025-09-19 09:34:31,305 - lr_scheduler - INFO -   Min LR: 1.00e-07
+2025-09-19 09:34:31,305 - lr_scheduler - INFO -   Scheduler type: Linear
+2025-09-19 09:34:31,305 - __main__ - INFO - PyTorch LambdaLR scheduler created with 910 total steps, 91 steps/epoch
+2025-09-19 09:34:31,313 - __main__ - INFO - Training setup:
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Train samples: 6496
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Test samples: 1568
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Batch size: 24
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Gradient accumulation: 3
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Effective batch size: 72
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Steps per epoch: 91
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Total epochs: 10
+2025-09-19 09:34:31,313 - __main__ - INFO -   - Estimated total steps: 910
+2025-09-19 09:34:31,313 - __main__ - INFO - Performing initial evaluation to establish baseline...
+2025-09-19 09:34:56,682 - __main__ - INFO - Evaluation - Epoch 0, Step 0: eval_loss=0.4902, eval_accuracy=0.617, Elapsed: 0.0s
+2025-09-19 09:34:56,683 - __main__ - INFO - Starting training...
+2025-09-19 09:34:56,979 - __main__ - INFO - Using stratified batch sampling for training
+2025-09-19 09:34:56,981 - __main__ - INFO - Stratified batching: 7 subgenres, 2 guaranteed per subgenre, 10 random slots per batch
+2025-09-19 09:34:56,988 - __main__ - INFO - Training started at 2025-09-19 09:34:56
+2025-09-19 09:34:56,988 - __main__ - INFO - Epoch 0: Using margin 0.500
+{'eval_accuracy': 0.6173469387755102, 'eval_loss': 0.4902423620223999}
+{'loss': 0.307, 'grad_norm': 0.8196476101875305, 'learning_rate': 2e-05, 'epoch': 1.0}
+2025-09-19 09:40:04,254 - __main__ - INFO - Evaluation - Epoch 1.0, Step 91: eval_loss=0.1868, eval_accuracy=0.845, Elapsed: 5m 7.3s
+2025-09-19 09:40:04,255 - __main__ - INFO - Epoch 1: Using margin 0.500
+{'eval_accuracy': 0.8450255102040817, 'eval_loss': 0.18677659332752228, 'epoch': 1.0}
+{'loss': 0.0733, 'grad_norm': 0.0, 'learning_rate': 1.7777777777777777e-05, 'epoch': 2.0}
+2025-09-19 09:45:06,367 - __main__ - INFO - Evaluation - Epoch 2.0, Step 182: eval_loss=0.1840, eval_accuracy=0.857, Elapsed: 10m 9.4s
+2025-09-19 09:45:06,368 - __main__ - INFO - Epoch 2: Using margin 0.500
+{'eval_accuracy': 0.8565051020408163, 'eval_loss': 0.18395937979221344, 'epoch': 2.0}
+{'loss': 0.034, 'grad_norm': 0.4588657021522522, 'learning_rate': 1.555555555555556e-05, 'epoch': 3.0}
+2025-09-19 09:50:07,710 - __main__ - INFO - Evaluation - Epoch 3.0, Step 273: eval_loss=0.1866, eval_accuracy=0.846, Elapsed: 15m 10.7s
+2025-09-19 09:50:07,711 - __main__ - INFO - Epoch 3: Using margin 0.500
+{'eval_accuracy': 0.8456632653061225, 'eval_loss': 0.18664944171905518, 'epoch': 3.0}
+{'loss': 0.0151, 'grad_norm': 0.5263649225234985, 'learning_rate': 1.3333333333333337e-05, 'epoch': 4.0}
+2025-09-19 09:55:09,616 - __main__ - INFO - Evaluation - Epoch 4.0, Step 364: eval_loss=0.1909, eval_accuracy=0.844, Elapsed: 20m 12.6s
+2025-09-19 09:55:09,616 - __main__ - INFO - Epoch 4: Using margin 0.500
+{'eval_accuracy': 0.84375, 'eval_loss': 0.19093327224254608, 'epoch': 4.0}
+{'loss': 0.005, 'grad_norm': 0.33849114179611206, 'learning_rate': 1.1111111111111113e-05, 'epoch': 5.0}
+2025-09-19 10:00:10,707 - __main__ - INFO - Evaluation - Epoch 5.0, Step 455: eval_loss=0.1905, eval_accuracy=0.844, Elapsed: 25m 13.7s
+2025-09-19 10:00:10,708 - __main__ - INFO - Epoch 5: Using margin 0.500
+{'eval_accuracy': 0.84375, 'eval_loss': 0.1905318647623062, 'epoch': 5.0}
+{'loss': 0.0025, 'grad_norm': 0.3228820264339447, 'learning_rate': 8.888888888888888e-06, 'epoch': 6.0}
+2025-09-19 10:05:11,353 - __main__ - INFO - Evaluation - Epoch 6.0, Step 546: eval_loss=0.1723, eval_accuracy=0.855, Elapsed: 30m 14.4s
+2025-09-19 10:05:11,354 - __main__ - INFO - Epoch 6: Using margin 0.500
+{'eval_accuracy': 0.8552295918367347, 'eval_loss': 0.17234358191490173, 'epoch': 6.0}
+{'loss': 0.0013, 'grad_norm': 0.0, 'learning_rate': 6.666666666666668e-06, 'epoch': 7.0}
+2025-09-19 10:10:11,751 - __main__ - INFO - Evaluation - Epoch 7.0, Step 637: eval_loss=0.1717, eval_accuracy=0.857, Elapsed: 35m 14.8s
+2025-09-19 10:10:11,751 - __main__ - INFO - Epoch 7: Using margin 0.500
+{'eval_accuracy': 0.8571428571428571, 'eval_loss': 0.17172245681285858, 'epoch': 7.0}
+{'loss': 0.0011, 'grad_norm': 0.0, 'learning_rate': 4.444444444444444e-06, 'epoch': 8.0}
+2025-09-19 10:15:12,917 - __main__ - INFO - Evaluation - Epoch 8.0, Step 728: eval_loss=0.1722, eval_accuracy=0.862, Elapsed: 40m 15.9s
+2025-09-19 10:15:12,918 - __main__ - INFO - Epoch 8: Using margin 0.500
+{'eval_accuracy': 0.8616071428571429, 'eval_loss': 0.17224688827991486, 'epoch': 8.0}
+{'loss': 0.0008, 'grad_norm': 0.0, 'learning_rate': 2.2222222222222233e-06, 'epoch': 9.0}
+2025-09-19 10:20:13,512 - __main__ - INFO - Evaluation - Epoch 9.0, Step 819: eval_loss=0.1749, eval_accuracy=0.857, Elapsed: 45m 16.5s
+2025-09-19 10:20:13,513 - __main__ - INFO - Epoch 9: Using margin 0.500
+{'eval_accuracy': 0.8571428571428571, 'eval_loss': 0.17490869760513306, 'epoch': 9.0}
+{'loss': 0.0004, 'grad_norm': 0.0, 'learning_rate': 2.4420024420024337e-07, 'epoch': 9.896678966789668}
+2025-09-19 10:24:45,752 - __main__ - INFO - Evaluation - Epoch 9.896678966789668, Step 900: eval_loss=0.1731, eval_accuracy=0.858, Elapsed: 49m 48.8s
+2025-09-19 10:24:45,754 - __main__ - INFO - Training completed! Total training time: 49m 48.8s
+2025-09-19 10:24:45,754 - __main__ - INFO - Training ended at 2025-09-19 10:24:45
+2025-09-19 10:24:45,754 - __main__ - INFO - [EarlyStopping] Training completed normally with final best accuracy: -inf
+2025-09-19 10:24:45,755 - __main__ - INFO - Saving model and artifacts...
+2025-09-19 10:24:46,847 - __main__ - INFO - Model saved to run_20250919_093428/model.safetensors
+2025-09-19 10:24:46,848 - __main__ - INFO - Configuration saved to run_20250919_093428/config.json
+2025-09-19 10:24:46,878 - __main__ - INFO - Splits saved to run_20250919_093428/splits.json
+2025-09-19 10:24:46,878 - __main__ - INFO - All training artifacts saved to run_20250919_093428
+2025-09-19 10:24:46,878 - __main__ - INFO - Training completed successfully! Training time: 49m 49.1s | Results saved to: run_20250919_093428
+{'eval_accuracy': 0.857780612244898, 'eval_loss': 0.17309002578258514, 'epoch': 9.896678966789668}
+{'train_runtime': 2988.7654, 'train_samples_per_second': 21.735, 'train_steps_per_second': 0.301, 'train_loss': 0.04451994941880306, 'epoch': 9.896678966789668}
+[INFO] Collecting artifacts to /homes/nnebeling/thesis/runs/ast-a40.162952 ...
+  -> copying run_20250919_093428
+  -> skipping ast_triplet_output (empty directory)
+  -> skipping logs (empty directory)
+[DONE] Everything copied to: /homes/nnebeling/thesis/runs/ast-a40.162952
+Job runtime: 3044 seconds (00:50:44)

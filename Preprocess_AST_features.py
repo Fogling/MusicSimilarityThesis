@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Improved AST Feature Preprocessing with proper error handling, memory efficiency,
-and configuration management.
+Improved AST Feature Preprocessing with proper error handling and configuration management.
 
 This refactored version addresses all issues found in the original:
-- Memory-efficient online statistics computation
+- Full dataset statistics computation for accurate normalization
 - Comprehensive error handling and validation
 - Configuration management with type safety
 - Proper logging and progress tracking
@@ -52,16 +51,17 @@ class PreprocessingConfig:
     # Input/Output
     wav_dir: str = "WAV"
     output_dir: str = "precomputed_AST"
-    
+
     # Audio processing
     chunk_duration: float = 10.24  # seconds - optimized for AST max_length 1024
     max_chunks_per_file: int = 3  # Reduced from 9 to avoid pseudo-duplicates
     target_sample_rate: int = 16000
     audio_extensions: Tuple[str, ...] = (".mp3", ".wav", ".flac", ".ogg")
-    
+
     # Chunk sampling strategy
     chunk_strategy: str = "random"  # "sequential", "random", "spaced" - random is best for diversity
     random_seed: Optional[int] = 42  # For reproducible random sampling
+    single_chunk: bool = False  # Average 3 chunks into 1 chunk
     
     # Feature extraction
     extractor_model: str = "MIT/ast-finetuned-audioset-10-10-0.4593"
@@ -384,60 +384,60 @@ def _get_chunk_positions(total_length: int, chunk_size: int, max_chunks: int,
     else:
         raise ValueError(f"Unknown chunk strategy: {strategy}")
 
-class OnlineStatsCalculator:
+class FullDatasetStatsCollector:
     """
-    Memory-efficient online statistics calculation using Welford's algorithm.
+    Collects all feature values from the entire dataset to compute exact statistics.
+
+    This class stores every feature value from every chunk to enable precise
+    mean and standard deviation computation for dataset normalization.
     """
-    
+
     def __init__(self):
-        self.count = 0
-        self.mean = 0.0
-        self.M2 = 0.0  # Sum of squared deviations
-    
-    def update(self, value: float) -> None:
-        """Update statistics with a new value."""
-        self.count += 1
-        delta = value - self.mean
-        self.mean += delta / self.count
-        delta2 = value - self.mean
-        self.M2 += delta * delta2
-    
+        self.all_values = []
+
     def update_batch(self, values: torch.Tensor) -> None:
-        """Update statistics with a batch of values."""
+        """Collect all values from a batch."""
         if values.numel() == 0:
             return
-            
-        batch_mean = values.mean().item()
-        batch_std = values.std(unbiased=False).item()
-        
-        # Update with batch statistics (simplified)
-        self.update(batch_mean)
-    
+        # Flatten and convert to list for collection
+        self.all_values.extend(values.flatten().tolist())
+
+    def compute_stats(self) -> Tuple[float, float]:
+        """Compute final mean and std from all collected values."""
+        if not self.all_values:
+            raise ValueError("No values collected for statistics computation")
+
+        # Convert to numpy for efficient computation
+        all_values_array = np.array(self.all_values)
+        mean_val = float(np.mean(all_values_array))
+        std_val = float(np.std(all_values_array))
+
+        return mean_val, std_val
+
     @property
-    def variance(self) -> float:
-        """Get current variance estimate."""
-        return self.M2 / self.count if self.count > 1 else 0.0
-    
-    @property
-    def std(self) -> float:
-        """Get current standard deviation estimate."""
-        return np.sqrt(self.variance)
+    def count(self) -> int:
+        """Get total number of values collected."""
+        return len(self.all_values)
+
+    def get_current_count(self) -> int:
+        """Get current number of values collected (for progress display)."""
+        return len(self.all_values)
 
 
 def compute_stats_pass(config: PreprocessingConfig) -> Tuple[float, float]:
     """
-    Pass 1: compute mean/std over *pre-normalized* AST inputs using memory-efficient online algorithm.
-    
+    Pass 1: compute mean/std over *pre-normalized* AST inputs using full dataset collection.
+
     Args:
         config: Preprocessing configuration
-        
+
     Returns:
         Tuple of (mean, std) values
-        
+
     Raises:
         PreprocessingError: If statistics computation fails
     """
-    logger.info("Pass 1/2: Computing dataset statistics (memory-efficient)...")
+    logger.info("Pass 1/2: Computing dataset statistics (full dataset pass)...")
     
     try:
         # Initialize extractor without normalization
@@ -447,8 +447,8 @@ def compute_stats_pass(config: PreprocessingConfig) -> Tuple[float, float]:
         else:
             logger.warning("Extractor does not have do_normalize attribute")
         
-        # Initialize online stats calculator
-        stats_calc = OnlineStatsCalculator()
+        # Initialize full dataset stats collector
+        stats_collector = FullDatasetStatsCollector()
         
         # Get all audio files
         items = list_audio_files(config.wav_dir, config)
@@ -488,7 +488,7 @@ def compute_stats_pass(config: PreprocessingConfig) -> Tuple[float, float]:
                             
                             # Update statistics
                             features = inputs["input_values"][0].float()
-                            stats_calc.update_batch(features)
+                            stats_collector.update_batch(features)
                             
                             file_chunks += 1
                             total_chunks += 1
@@ -502,8 +502,7 @@ def compute_stats_pass(config: PreprocessingConfig) -> Tuple[float, float]:
                         pbar.set_postfix({
                             'files': successful_files,
                             'chunks': total_chunks,
-                            'mean': f'{stats_calc.mean:.4f}',
-                            'std': f'{stats_calc.std:.4f}'
+                            'values': f'{stats_collector.count:,}'
                         })
                     
                 except AudioLoadError as e:
@@ -514,13 +513,15 @@ def compute_stats_pass(config: PreprocessingConfig) -> Tuple[float, float]:
                     continue
         
         # Validate results
-        if stats_calc.count == 0:
+        if stats_collector.count == 0:
             raise PreprocessingError("No valid audio chunks found for statistics computation")
-        
-        mean_val = float(stats_calc.mean)
-        std_val = float(stats_calc.std) if stats_calc.std > 0 else 1.0
+
+        # Compute final statistics from all collected values
+        mean_val, std_val = stats_collector.compute_stats()
+        std_val = std_val if std_val > 0 else 1.0
         
         logger.info(f"Statistics computed from {successful_files} files, {total_chunks} chunks")
+        logger.info(f"Total values collected: {stats_collector.count:,}")
         logger.info(f"Dataset statistics — mean: {mean_val:.6f}, std: {std_val:.6f}")
         
         return mean_val, std_val
@@ -529,6 +530,29 @@ def compute_stats_pass(config: PreprocessingConfig) -> Tuple[float, float]:
         if isinstance(e, PreprocessingError):
             raise
         raise PreprocessingError(f"Statistics computation failed: {e}")
+
+def average_chunks_features(chunk_features_list: List[torch.Tensor]) -> torch.Tensor:
+    """
+    Average multiple chunk features into a single representation.
+
+    Args:
+        chunk_features_list: List of feature tensors from chunks
+
+    Returns:
+        Averaged feature tensor
+    """
+    if not chunk_features_list:
+        raise ValueError("Cannot average empty chunk list")
+
+    if len(chunk_features_list) == 1:
+        return chunk_features_list[0]
+
+    # Stack and average along the batch dimension
+    stacked_features = torch.stack(chunk_features_list, dim=0)
+    averaged_features = torch.mean(stacked_features, dim=0, keepdim=True)
+
+    return averaged_features
+
 
 def extract_and_save_features(config: PreprocessingConfig, mean_val: float, std_val: float) -> Dict[str, Any]:
     """
@@ -581,48 +605,113 @@ def extract_and_save_features(config: PreprocessingConfig, mean_val: float, std_
                     
                     # Process chunks
                     file_chunks = 0
-                    chunk_idx = 1
-                    
-                    for chunk in chunk_waveform(
-                        waveform, 
-                        config.target_sample_rate,
-                        config.chunk_duration, 
-                        config.max_chunks_per_file,
-                        strategy=config.chunk_strategy,
-                        seed=config.random_seed
-                    ):
-                        try:
-                            # Extract features
-                            inputs = feature_extractor(
-                                chunk.numpy(),
-                                sampling_rate=config.target_sample_rate,
-                                return_tensors="pt",
-                                padding=config.padding_strategy
-                            )
-                            
-                            # Validate features
-                            if "input_values" not in inputs:
-                                logger.warning(f"No input_values in features for {filepath}, chunk {chunk_idx}")
+
+                    if config.single_chunk:
+                        # Collect features from multiple chunks and average them
+                        chunk_features = []
+                        chunk_idx = 1
+
+                        for chunk in chunk_waveform(
+                            waveform,
+                            config.target_sample_rate,
+                            config.chunk_duration,
+                            config.max_chunks_per_file,
+                            strategy=config.chunk_strategy,
+                            seed=config.random_seed
+                        ):
+                            try:
+                                # Extract features
+                                inputs = feature_extractor(
+                                    chunk.numpy(),
+                                    sampling_rate=config.target_sample_rate,
+                                    return_tensors="pt",
+                                    padding=config.padding_strategy
+                                )
+
+                                # Validate features
+                                if "input_values" not in inputs:
+                                    logger.warning(f"No input_values in features for {filepath}, chunk {chunk_idx}")
+                                    chunk_idx += 1
+                                    continue
+
+                                features = inputs["input_values"]
+                                if torch.isnan(features).any() or torch.isinf(features).any():
+                                    logger.warning(f"Invalid features in {filepath}, chunk {chunk_idx}")
+                                    chunk_idx += 1
+                                    continue
+
+                                chunk_features.append(features)
+                                chunk_idx += 1
+
+                            except Exception as e:
+                                logger.warning(f"Error processing chunk {chunk_idx} from {filepath}: {e}")
+                                chunk_idx += 1
                                 continue
-                            
-                            features = inputs["input_values"]
-                            if torch.isnan(features).any() or torch.isinf(features).any():
-                                logger.warning(f"Invalid features in {filepath}, chunk {chunk_idx}")
+
+                        # Average chunks and save single file
+                        if chunk_features:
+                            try:
+                                averaged_features = average_chunks_features(chunk_features)
+
+                                # Create averaged inputs dict
+                                averaged_inputs = {
+                                    "input_values": averaged_features
+                                }
+
+                                # Save averaged features
+                                sanitized_name = sanitize_filename(basename, config.max_filename_length)
+                                output_filename = f"{sanitized_name}_chunk1.pt"
+                                output_path = subgenre_dir / output_filename
+
+                                torch.save(averaged_inputs, output_path)
+                                file_chunks = 1  # One averaged chunk per file
+
+                            except Exception as e:
+                                logger.warning(f"Error averaging chunks from {filepath}: {e}")
+                    else:
+                        # Original behavior: save individual chunks
+                        chunk_idx = 1
+
+                        for chunk in chunk_waveform(
+                            waveform,
+                            config.target_sample_rate,
+                            config.chunk_duration,
+                            config.max_chunks_per_file,
+                            strategy=config.chunk_strategy,
+                            seed=config.random_seed
+                        ):
+                            try:
+                                # Extract features
+                                inputs = feature_extractor(
+                                    chunk.numpy(),
+                                    sampling_rate=config.target_sample_rate,
+                                    return_tensors="pt",
+                                    padding=config.padding_strategy
+                                )
+
+                                # Validate features
+                                if "input_values" not in inputs:
+                                    logger.warning(f"No input_values in features for {filepath}, chunk {chunk_idx}")
+                                    continue
+
+                                features = inputs["input_values"]
+                                if torch.isnan(features).any() or torch.isinf(features).any():
+                                    logger.warning(f"Invalid features in {filepath}, chunk {chunk_idx}")
+                                    continue
+
+                                # Save features
+                                sanitized_name = sanitize_filename(basename, config.max_filename_length)
+                                output_filename = f"{sanitized_name}_chunk{chunk_idx}.pt"
+                                output_path = subgenre_dir / output_filename
+
+                                torch.save(dict(inputs), output_path)
+
+                                file_chunks += 1
+                                chunk_idx += 1
+
+                            except Exception as e:
+                                logger.warning(f"Error processing chunk {chunk_idx} from {filepath}: {e}")
                                 continue
-                            
-                            # Save features
-                            sanitized_name = sanitize_filename(basename, config.max_filename_length)
-                            output_filename = f"{sanitized_name}_chunk{chunk_idx}.pt"
-                            output_path = subgenre_dir / output_filename
-                            
-                            torch.save(dict(inputs), output_path)
-                            
-                            file_chunks += 1
-                            chunk_idx += 1
-                            
-                        except Exception as e:
-                            logger.warning(f"Error processing chunk {chunk_idx} from {filepath}: {e}")
-                            continue
                     
                     if file_chunks > 0:
                         stats["successful_files"] += 1
@@ -765,6 +854,10 @@ def main():
     parser.add_argument("--min-length", type=float, default=1.0, help="Minimum audio length (seconds)")
     parser.add_argument("--max-length", type=float, default=600.0, help="Maximum audio length (seconds)")
     
+    # Chunking strategy arguments
+    parser.add_argument("--single-chunk", action="store_true",
+                       help="Average 3 chunks into 1 single chunk per file")
+
     # Other arguments
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     parser.add_argument("--config", type=str, help="Load configuration from JSON file")
@@ -792,6 +885,7 @@ def main():
                 target_sample_rate=args.sample_rate,
                 chunk_strategy=args.chunk_strategy,
                 random_seed=args.random_seed,
+                single_chunk=args.single_chunk,
                 extractor_model=args.extractor_model,
                 padding_strategy=args.padding,
                 max_filename_length=args.max_filename_length,
