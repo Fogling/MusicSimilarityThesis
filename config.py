@@ -15,6 +15,10 @@ class ModelConfig:
     """Model architecture configuration."""
     pretrained_model: str = "MIT/ast-finetuned-audioset-10-10-0.4593"
 
+    # AST Transformer Dropout Configuration
+    ast_hidden_dropout_prob: float = 0.0        # AST transformer layer dropout
+    ast_attention_dropout_prob: float = 0.0     # AST attention dropout
+
     # MLP Projection Head Configuration
     # Architecture: AST(768D) -> hidden_layers -> output_dim
     # Example: [512] creates: 768->512->128 (if output_dim=128)

@@ -290,8 +290,6 @@ class EarlyStoppingCallback(TrainerCallback):
             
             if resampling_this_epoch:
                 self.last_resample_epoch = current_epoch
-                logger.info(f"[EarlyStopping] Detected resampling at epoch {current_epoch}, "
-                           f"setting grace period of {self.post_resample_grace_epochs} epochs")
     
     def on_evaluate(self, args, state, control, logs=None, **kwargs):
         """
@@ -572,8 +570,7 @@ class ImprovedTripletFeatureDataset(TorchDataset):
 
         # build indices that allow resampling (subgenre -> track -> chunks)
         self._build_indices_from_triplets(self.triplets_original)
-        if self._resample_enabled and split_name == "train":
-            self.resample_for_new_epoch()
+        # Note: Do NOT resample during initialization - let the ResampleCallback handle this during training
 
         # Show actual resampling behavior, not just config flag
         actually_resampling = self._resample_enabled and split_name == "train"
@@ -960,8 +957,15 @@ class ImprovedASTTripletWrapper(nn.Module):
         
         try:
             logger.info(f"Loading pretrained model: {config.model.pretrained_model}")
-            self.ast = ASTModel.from_pretrained(config.model.pretrained_model, cache_dir=cache)
-            
+            self.ast = ASTModel.from_pretrained(
+                config.model.pretrained_model,
+                cache_dir=cache,
+                hidden_dropout_prob=config.model.ast_hidden_dropout_prob,
+                attention_probs_dropout_prob=config.model.ast_attention_dropout_prob
+            )
+            logger.info(f"AST dropout configured - Hidden: {config.model.ast_hidden_dropout_prob}, "
+                       f"Attention: {config.model.ast_attention_dropout_prob}")
+
         except Exception as e:
             raise ModelLoadError(f"Failed to load AST model: {e}")
         
@@ -2171,10 +2175,15 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
                 tf32=fold_config.training.tf32,
             )
 
-            # Create trainer with minimal callbacks for K-fold
+            # Create callbacks for K-fold (including resampling support)
+            resample_flag = bool(getattr(fold_config.data, "resample_train_samples", False))
+            resample_callback = ResampleCallback(train_dataset, fold_config, enabled=resample_flag)
+
             callbacks = [
                 CleanLoggingCallback(),
-                MarginSchedulingCallback(model)
+                resample_callback,
+                MarginSchedulingCallback(model),
+                EarlyStoppingCallback(fold_config, resample_callback)
             ]
 
             trainer = DataLoaderTrainer(
