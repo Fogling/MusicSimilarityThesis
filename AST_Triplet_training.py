@@ -1055,7 +1055,7 @@ class ImprovedASTTripletWrapper(nn.Module):
         self.current_epoch = epoch
         current_margin = self.get_current_margin()
         self.triplet_margin = current_margin
-        logger.info(f"Epoch {epoch}: Using margin {current_margin:.3f}")
+        #logger.info(f"Epoch {epoch}: Using margin {current_margin:.3f}")
     
     def get_current_margin(self) -> float:
         """Get current margin based on linear scheduling."""
@@ -2057,6 +2057,8 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
 
     logger.info(f"\n{'='*80}")
     logger.info(f"STARTING {k}-FOLD CROSS-VALIDATION EXPERIMENT")
+    logger.info(f"Experiment: {base_config.experiment_name}")
+    logger.info(f"Description: {base_config.description}")
     logger.info(f"Using preprocessed k-fold data from: {preprocessed_path}")
     logger.info(f"Results directory: {results_dir}")
     logger.info(f"{'='*80}")
@@ -2158,7 +2160,7 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
                 dataloader_num_workers=fold_config.training.num_workers,
                 dataloader_pin_memory=fold_config.training.pin_memory,
                 report_to="none",
-                logging_first_step=False,
+                logging_first_step=True,
                 disable_tqdm=fold_config.training.disable_tqdm,
                 log_level="warning",
                 seed=fold_config.training.seed,
@@ -2258,6 +2260,15 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
             fold_metrics.append(fold_result)
 
             logger.info(f"Fold {fold_idx} completed - Final Accuracy: {final_metrics.get('eval_accuracy', 0.0):.4f}")
+
+            # Explicit cleanup to prevent state leakage between folds
+            del trainer
+            del model
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+            # Reset any global trainer state
+            import gc
+            gc.collect()
 
         except Exception as e:
             logger.error(f"Fold {fold_idx} failed: {e}")
