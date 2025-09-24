@@ -5,13 +5,14 @@
 #SBATCH --cpus-per-gpu=12
 #SBATCH --mem=100G
 #SBATCH --tmp=75G
-#SBATCH --time=1-00:00:00
+#SBATCH --time=10:00:00
 
 #exit on error or undef variables
 set -euo pipefail
 
 ######### EDIT THESE #########
-ARCHIVE="$HOME/thesis/precomputed_7G_2Chunk.zip"          # .zip or .tar.gz both ok
+ARCHIVE="$HOME/thesis/precomp_5Fold_7Gen_2Chunk.zip"          # .zip or .tar.gz both ok
+CHUNKDIR="precomp_5Fold_7Gen_2Chunk"
 CONFIG_JSON="$HOME/thesis/$1"
 TRAIN_PY="$HOME/thesis/AST_Triplet_kfold.py"
 OUT_BASE="$HOME/thesis/runs"                        # where results will be copied
@@ -54,7 +55,7 @@ find . -maxdepth 2 -type d | sed 's#^\./##'
 #    in $SLURM_JOB_TMP and we unpacked here, the relative path resolves
 #    correctly. Inside Python you can also do: cache = os.environ["SLURM_JOB_TMP"].
 echo "[INFO] Starting training..."
-python "${TRAIN_PY}" --config "${CONFIG_JSON}"
+python "${TRAIN_PY}" --config "${CONFIG_JSON}" --preprocessed-dir "${CHUNKDIR}"
 
 # 5) (Optional) Collect results back to $HOME in a run-specific folder
 RUN_DIR="${OUT_BASE}/${SLURM_JOB_NAME}.${SLURM_JOB_ID}"
@@ -64,6 +65,7 @@ echo "[INFO] Collecting artifacts to ${RUN_DIR} ..."
 # trainer outputs (if any), split info, final model folders, logs
 shopt -s nullglob
 for p in \
+  kfold_results* \
   run_* \
   *.log
 do

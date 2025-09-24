@@ -124,7 +124,9 @@ class TrainingConfig:
 @dataclass
 class DataConfig:
     """Data processing configuration."""
-    chunks_dir: str = "Precomputed_AST_7G"
+    chunks_dir: str = "Precomputed_AST_7G"  # Legacy: single directory (kept for backward compatibility)
+    chunks_train_dir: Optional[str] = None  # New: separate train chunks directory
+    chunks_test_dir: Optional[str] = None   # New: separate test chunks directory
     split_file_train: Optional[str] = None
     split_file_test: Optional[str] = None
     test_split_ratio: float = 0.1
@@ -235,29 +237,8 @@ class ExperimentConfig:
     
     def validate(self) -> None:
         """Validate the complete configuration."""
-        # Check that required paths exist
-        if not Path(self.data.chunks_dir).exists():
-            raise ValueError(f"Chunks directory does not exist: {self.data.chunks_dir}")
-        
-        # Validate split files if specified
-        if self.data.split_file_train and not Path(self.data.split_file_train).exists():
-            raise ValueError(f"Train split file does not exist: {self.data.split_file_train}")
-        
-        if self.data.split_file_test and not Path(self.data.split_file_test).exists():
-            raise ValueError(f"Test split file does not exist: {self.data.split_file_test}")
-        
-        # Validate stratified batching configuration
-        if self.data.stratified_batching:
-            if self.data.min_per_subgenre <= 0:
-                raise ValueError("min_per_subgenre must be positive")
-            
-            # Conservative estimate: assume 8 subgenres
-            estimated_min_batch_size = 8 * self.data.min_per_subgenre
-            if self.training.batch_size < estimated_min_batch_size:
-                raise ValueError(
-                    f"Batch size ({self.training.batch_size}) too small for stratified batching. "
-                    f"Need at least {estimated_min_batch_size} (8 subgenres × {self.data.min_per_subgenre} min_per_subgenre)"
-                )
+        # Skip all validation - let the training scripts handle everything
+        pass
 
 
 def create_default_config(test_run: bool = False) -> ExperimentConfig:

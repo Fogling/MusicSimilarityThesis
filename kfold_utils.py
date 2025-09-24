@@ -19,6 +19,23 @@ logger = logging.getLogger(__name__)
 
 def create_kfold_partitions(config: ExperimentConfig, k: int = 5) -> Dict[str, List[List[str]]]:
     """
+    DEPRECATED: Create K-Fold partitions at the track level for each subgenre.
+
+    This function is deprecated in favor of using preprocessed k-fold splits created by
+    Preprocess_AST_features.py with --enable-kfold flag, which eliminates data leakage
+    by computing normalization statistics only from training data.
+
+    Use the new approach instead:
+    1. python Preprocess_AST_features.py --enable-kfold --k-folds 5 --wav-dir WAV --output-dir precomputed_5fold
+    2. python AST_Triplet_kfold.py --preprocessed-dir precomputed_5fold --k 5
+    """
+    import warnings
+    warnings.warn(
+        "create_kfold_partitions is deprecated. Use preprocessed k-fold splits instead to avoid data leakage.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    """
     Create K-Fold partitions at the track level for each subgenre.
 
     Args:
@@ -142,6 +159,20 @@ def generate_kfold_triplet_splits(train_tracks: Dict[str, List[str]],
                                  test_tracks: Dict[str, List[str]],
                                  config: ExperimentConfig,
                                  fold_idx: int) -> Tuple[List, List]:
+    """
+    DEPRECATED: Generate triplets from K-fold train/test track splits.
+
+    This function is deprecated in favor of using preprocessed k-fold splits which
+    eliminate data leakage by computing normalization statistics only from training data.
+
+    Use the new approach with AST_Triplet_kfold.py --preprocessed-dir instead.
+    """
+    import warnings
+    warnings.warn(
+        "generate_kfold_triplet_splits is deprecated. Use preprocessed k-fold splits instead to avoid data leakage.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     """
     Generate triplets from K-fold train/test track splits.
 

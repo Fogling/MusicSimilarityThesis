@@ -1326,12 +1326,116 @@ def compute_metrics(eval_pred) -> Dict[str, float]:
         return {"accuracy": 0.0, "eval_accuracy": 0.0}
 
 
+def load_preprocessed_split_data(config: ExperimentConfig) -> Tuple[List, List]:
+    """
+    Load train/test splits from preprocessed k-fold directories.
+
+    This function loads triplets directly from preprocessed train/test chunk directories,
+    eliminating the need for on-the-fly splitting and ensuring no data leakage.
+
+    Args:
+        config: Experiment configuration with chunks_train_dir and chunks_test_dir set
+
+    Returns:
+        Tuple of (train_triplets, test_triplets)
+
+    Raises:
+        FileNotFoundError: If train or test directories don't exist
+        ValueError: If no valid chunks are found
+    """
+    data_config = config.data
+
+    # Validate that we have separate train/test directories
+    if not data_config.chunks_train_dir or not data_config.chunks_test_dir:
+        raise ValueError("chunks_train_dir and chunks_test_dir must be set for preprocessed splits")
+
+    train_chunks_dir = Path(data_config.chunks_train_dir)
+    test_chunks_dir = Path(data_config.chunks_test_dir)
+
+    if not train_chunks_dir.exists():
+        raise FileNotFoundError(f"Training chunks directory not found: {train_chunks_dir}")
+    if not test_chunks_dir.exists():
+        raise FileNotFoundError(f"Test chunks directory not found: {test_chunks_dir}")
+
+    logger.info(f"Loading preprocessed splits:")
+    logger.info(f"  Train chunks: {train_chunks_dir}")
+    logger.info(f"  Test chunks: {test_chunks_dir}")
+
+    # Generate triplets from preprocessed train directory
+    logger.info("Generating train triplets from preprocessed train chunks...")
+    train_triplets = _generate_triplets_from_chunks_dir(train_chunks_dir, "train", config)
+
+    # Generate triplets from preprocessed test directory
+    logger.info("Generating test triplets from preprocessed test chunks...")
+    test_triplets = _generate_triplets_from_chunks_dir(test_chunks_dir, "test", config)
+
+    # Validation
+    if not train_triplets:
+        raise ValueError(f"No train triplets generated from {train_chunks_dir}")
+    if not test_triplets:
+        raise ValueError(f"No test triplets generated from {test_chunks_dir}")
+
+    logger.info(f"✅ Preprocessed splits loaded:")
+    logger.info(f"  Train triplets: {len(train_triplets)}")
+    logger.info(f"  Test triplets: {len(test_triplets)}")
+    logger.info(f"✅ NO DATA LEAKAGE: Using scientifically sound preprocessed train/test separation")
+
+    return train_triplets, test_triplets
+
+
+def _generate_triplets_from_chunks_dir(chunks_dir: Path, split_name: str, config: ExperimentConfig) -> List[Tuple[str, str, str, str]]:
+    """
+    Generate triplets from a chunks directory (either train or test).
+
+    Args:
+        chunks_dir: Directory containing subgenre subdirectories with chunk files
+        split_name: "train" or "test" (for logging)
+        config: Experiment configuration
+
+    Returns:
+        List of triplets in format (anchor_path, positive_path, negative_path, subgenre)
+    """
+    # Organize tracks by subgenre from the chunks directory
+    subgenre_tracks = defaultdict(dict)  # {subgenre: {track_name: [chunk_files]}}
+
+    for subdir in sorted(chunks_dir.iterdir()):
+        if not subdir.is_dir():
+            continue
+
+        subgenre = subdir.name
+        chunk_files = [f for f in subdir.iterdir() if f.suffix == '.pt']
+
+        if not chunk_files:
+            logger.warning(f"{split_name.capitalize()} - No chunks found in {subdir}")
+            continue
+
+        # Group chunks by track name
+        for chunk_file in chunk_files:
+            # Extract track name (remove _chunkN.pt suffix)
+            track_name = chunk_file.stem.rsplit('_chunk', 1)[0] if '_chunk' in chunk_file.stem else chunk_file.stem
+
+            if track_name not in subgenre_tracks[subgenre]:
+                subgenre_tracks[subgenre][track_name] = []
+            subgenre_tracks[subgenre][track_name].append(str(chunk_file))
+
+        logger.info(f"{split_name.capitalize()} - Subgenre {subgenre}: {len(subgenre_tracks[subgenre])} tracks, {len(chunk_files)} chunks")
+
+    # Generate triplets using existing logic
+    return _generate_triplets_from_tracks(subgenre_tracks, split_name, config)
+
+
 def load_split_data(config: ExperimentConfig) -> Tuple[List, List]:
     """Load train/test splits with support for both old and new formats."""
     data_config = config.data
 
-    # Check if K-fold mode is enabled and we're running a specific fold
+    # NEW: Check if we have preprocessed train/test directories (preferred approach)
+    if data_config.chunks_train_dir and data_config.chunks_test_dir:
+        logger.info("Using preprocessed train/test splits (scientifically sound - no data leakage)")
+        return load_preprocessed_split_data(config)
+
+    # OLD: Check if K-fold mode is enabled and we're running a specific fold (deprecated)
     if data_config.enable_kfold and data_config.kfold_current_fold is not None:
+        logger.warning("Using deprecated k-fold approach - consider using preprocessed splits instead")
         return load_kfold_split_data(config)
 
     # Try new format first
@@ -1909,21 +2013,43 @@ def main():
     return 0
 
 
-def run_kfold_training(base_config: ExperimentConfig, k: int = 5, output_dir: str = "kfold_results") -> Dict[str, Any]:
+def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: int = 5, output_dir: str = "kfold_results") -> Dict[str, Any]:
     """
-    Run complete K-fold cross-validation training with full training history capture.
+    Run complete K-fold cross-validation training using preprocessed k-fold directories.
+
+    This function assumes that k-fold preprocessing has already been done using
+    Preprocess_AST_features.py with --enable-kfold flag, creating a directory structure like:
+    preprocessed_dir/fold_0/train_chunks/, preprocessed_dir/fold_0/test_chunks/, etc.
 
     Args:
         base_config: Base experiment configuration
-        k: Number of folds
+        preprocessed_dir: Path to preprocessed k-fold directory (e.g., "precomputed_7Gen_5Fold")
+        k: Number of folds (should match the preprocessed data)
         output_dir: Directory to save results
 
     Returns:
         Dictionary with aggregated results and statistics
     """
     from datetime import datetime
-    from kfold_utils import create_kfold_partitions, save_kfold_partitions
     import numpy as np
+
+    # Validate preprocessed directory
+    preprocessed_path = Path(preprocessed_dir)
+    if not preprocessed_path.exists():
+        raise FileNotFoundError(f"Preprocessed k-fold directory not found: {preprocessed_path}")
+
+    # Check that all folds exist
+    for fold_idx in range(k):
+        fold_dir = preprocessed_path / f"fold_{fold_idx}"
+        train_dir = fold_dir / "train_chunks"
+        test_dir = fold_dir / "test_chunks"
+
+        if not fold_dir.exists():
+            raise FileNotFoundError(f"Fold directory not found: {fold_dir}")
+        if not train_dir.exists():
+            raise FileNotFoundError(f"Train chunks directory not found: {train_dir}")
+        if not test_dir.exists():
+            raise FileNotFoundError(f"Test chunks directory not found: {test_dir}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results_dir = Path(output_dir) / f"kfold_{timestamp}"
@@ -1931,16 +2057,29 @@ def run_kfold_training(base_config: ExperimentConfig, k: int = 5, output_dir: st
 
     logger.info(f"\n{'='*80}")
     logger.info(f"STARTING {k}-FOLD CROSS-VALIDATION EXPERIMENT")
+    logger.info(f"Using preprocessed k-fold data from: {preprocessed_path}")
     logger.info(f"Results directory: {results_dir}")
     logger.info(f"{'='*80}")
 
-    # Create K-fold partitions
-    logger.info("Creating K-fold partitions...")
-    kfold_partitions = create_kfold_partitions(base_config, k=k)
+    # Load k-fold partitions metadata if available (for reproducibility tracking)
+    partitions_file = preprocessed_path / "kfold_partitions.json"
+    if partitions_file.exists():
+        logger.info(f"Loading k-fold partition metadata from {partitions_file}")
+        with open(partitions_file, 'r') as f:
+            partition_metadata = json.load(f)
+        logger.info(f"Partition seed used: {partition_metadata.get('metadata', {}).get('partition_seed', 'unknown')}")
+    else:
+        logger.warning(f"No partition metadata found at {partitions_file}")
+        partition_metadata = {}
 
-    # Save partitions for reproducibility
-    partitions_file = results_dir / "kfold_partitions.json"
-    save_kfold_partitions(kfold_partitions, str(partitions_file), base_config)
+    # Copy partition metadata for reproducibility
+    if partition_metadata:
+        partitions_file = results_dir / "kfold_partitions.json"
+        with open(partitions_file, 'w') as f:
+            json.dump(partition_metadata, f, indent=2)
+        logger.info(f"Partition metadata copied to {partitions_file}")
+    else:
+        logger.warning("No partition metadata available to copy")
 
     # Save base configuration
     base_config_file = results_dir / "base_config.json"
@@ -1948,7 +2087,7 @@ def run_kfold_training(base_config: ExperimentConfig, k: int = 5, output_dir: st
 
     fold_metrics = []
 
-    # Run training for each fold
+    # Run training for each fold using preprocessed data
     for fold_idx in range(k):
         logger.info(f"\n{'='*60}")
         logger.info(f"TRAINING FOLD {fold_idx + 1}/{k}")
@@ -1960,11 +2099,14 @@ def run_kfold_training(base_config: ExperimentConfig, k: int = 5, output_dir: st
         fold_config.experiment_name = f"{base_config.experiment_name}_fold_{fold_idx}"
         fold_config.description = f"Fold {fold_idx + 1}/{k} of K-fold cross-validation"
 
-        # Enable K-fold mode and set current fold
-        fold_config.data.enable_kfold = True
-        fold_config.data.kfold_k = k
-        fold_config.data.kfold_current_fold = fold_idx
-        fold_config.data.kfold_partitions_file = str(partitions_file)
+        # Set preprocessed train/test directories for this fold
+        fold_config.data.chunks_train_dir = str(preprocessed_path / f"fold_{fold_idx}" / "train_chunks")
+        fold_config.data.chunks_test_dir = str(preprocessed_path / f"fold_{fold_idx}" / "test_chunks")
+
+        # Clear legacy k-fold settings
+        fold_config.data.enable_kfold = False
+        fold_config.data.kfold_current_fold = None
+        fold_config.data.kfold_partitions_file = None
 
         # Create fold directory
         fold_dir = results_dir / f"fold_{fold_idx}"

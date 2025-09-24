@@ -1,14 +1,16 @@
 {
     "model": {
         "pretrained_model": "MIT/ast-finetuned-audioset-10-10-0.4593",
-        "projection_hidden_layers": [512],
+        "projection_hidden_layers": [
+            512
+        ],
         "projection_activation": "relu",
         "projection_dropout_rate": 0.15,
         "output_dim": 128
     },
     "training": {
         "batch_size": 24,
-        "epochs": 15,
+        "epochs": 3,
         "learning_rate": 2e-05,
         "weight_decay": 0.05,
         "gradient_accumulation_steps": 3,
@@ -32,7 +34,7 @@
         "save_strategy": "no",
         "save_steps": 1000,
         "eval_steps": 500,
-        "seed": 13,
+        "seed": 42,
         "disable_tqdm": true,
         "force_single_gpu": true,
         "bf16": true,
@@ -48,6 +50,8 @@
     },
     "data": {
         "chunks_dir": "precomputed_7G_2Chunk",
+        "chunks_train_dir": null,
+        "chunks_test_dir": null,
         "split_file_train": null,
         "split_file_test": null,
         "test_split_ratio": 0.2,
@@ -67,7 +71,7 @@
         "quick_test_fraction": 0.05,
         "use_legacy_splits": false,
         "legacy_split_dir": null,
-        "enable_augmentations": true,
+        "enable_augmentations": false,
         "augmentation_probability": 0.7,
         "use_2d_augmentations": true,
         "aug_time_mask_prob": 0.4,
@@ -77,7 +81,10 @@
         "aug_noise_prob": 0.5,
         "aug_noise_std": 0.05,
         "aug_volume_prob": 0.5,
-        "aug_volume_range": [0.8, 1.2],
+        "aug_volume_range": [
+            0.8,
+            1.2
+        ],
         "aug_temporal_shift_prob": 0.3,
         "aug_temporal_shift_max": 5,
         "aug_2d_freq_mask_prob": 0.5,
@@ -85,7 +92,11 @@
         "aug_2d_time_mask_prob": 0.5,
         "aug_2d_time_mask_max": 20,
         "aug_2d_num_freq_masks": 2,
-        "aug_2d_num_time_masks": 2
+        "aug_2d_num_time_masks": 2,
+        "enable_kfold": false,
+        "kfold_k": 5,
+        "kfold_partitions_file": null,
+        "kfold_current_fold": null
     },
     "experiment_name": "Chunking Strategy: 2 Chunks (Baseline)",
     "description": "Best performing 2-chunk strategy (6x2x2=24 triplets per anchor, baseline for comparison)"
