@@ -37,7 +37,7 @@ Example usage:
     parser.add_argument("--preprocessed-dir", type=str, required=True,
                        help="Path to preprocessed k-fold directory (e.g., 'precomputed_7Gen_5Fold')")
     parser.add_argument("--test-run", action="store_true", help="Run quick test with minimal data")
-    parser.add_argument("--k", type=int, default=5, help="Number of folds (default: 5)")
+    parser.add_argument("--k", type=int, default=3, help="Number of folds (default: 5)")
     parser.add_argument("--output-dir", type=str, default="kfold_results",
                        help="Output directory for results (default: 'kfold_results')")
 

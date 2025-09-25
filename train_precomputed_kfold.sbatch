@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-gpu=12
 #SBATCH --mem=100G
 #SBATCH --tmp=75G
-#SBATCH --time=10:00:00
+#SBATCH --time=15:00:00
 
 #exit on error or undef variables
 set -euo pipefail

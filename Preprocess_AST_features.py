@@ -284,6 +284,11 @@ def get_resampler(orig_freq: int, new_freq: int) -> torchaudio.transforms.Resamp
         )
     return _resampler_cache[key]
 
+def clear_resampler_cache():
+    """Clear the global resampler cache to free memory."""
+    global _resampler_cache
+    _resampler_cache.clear()
+
 def load_and_resample(path: str, target_sr: int, config: PreprocessingConfig) -> torch.Tensor:
     """
     Load audio file and convert to mono with target sample rate.
@@ -335,12 +340,13 @@ def load_and_resample(path: str, target_sr: int, config: PreprocessingConfig) ->
             raise
         raise AudioLoadError(f"Failed to load audio from {path}: {e}")
 
-def chunk_waveform(waveform: torch.Tensor, sr: int, duration_s: int, 
-                  max_chunks: int = 9, overlap: float = 0.0, 
+def chunk_waveform(waveform: torch.Tensor, sr: int, duration_s: int,
+                  max_chunks: int = 9, overlap: float = 0.0,
                   strategy: str = "sequential", seed: Optional[int] = None) -> Generator[torch.Tensor, None, None]:
     """
     Yield up to max_chunks chunks using different sampling strategies.
-    
+    Only generates chunks that actually fit within the available audio duration.
+
     Args:
         waveform: Input audio waveform
         sr: Sample rate
@@ -349,137 +355,108 @@ def chunk_waveform(waveform: torch.Tensor, sr: int, duration_s: int,
         overlap: Overlap fraction between chunks (0.0 = no overlap, 0.5 = 50% overlap)
         strategy: Sampling strategy - "sequential", "random", or "spaced"
         seed: Random seed for reproducible sampling
-        
+
     Yields:
-        Audio chunks as tensors
+        Audio chunks as tensors (only chunks that actually exist)
     """
     if duration_s <= 0:
         raise ValueError("Chunk duration must be positive")
     if not 0 <= overlap < 1:
         raise ValueError("Overlap must be between 0 and 1 (exclusive)")
-    
-    chunk_size = duration_s * sr
+
+    chunk_size = int(duration_s * sr)
     total_length = waveform.shape[0]
-    
-    if chunk_size > total_length:
-        logger.warning(f"Chunk size ({chunk_size}) larger than audio length ({total_length})")
-        yield waveform
+
+    # Check if we have enough space for any chunks
+    if total_length < chunk_size:
+        audio_duration_s = total_length / sr
+        min_required_s = chunk_size / sr
+        logger.warning(f"Audio too short for chunking: {audio_duration_s:.1f}s < {min_required_s:.1f}s required. Skipping.")
         return
-    
+
+    # Calculate maximum possible non-overlapping chunks given total length
+    max_possible_chunks = max(1, int(total_length / chunk_size))
+    actual_max_chunks = min(max_chunks, max_possible_chunks)
+
+    if actual_max_chunks < max_chunks:
+        logger.info(f"Audio allows only {actual_max_chunks} chunks instead of requested {max_chunks}")
+
     # Get chunk start positions based on strategy
     start_positions = _get_chunk_positions(
-        total_length, chunk_size, max_chunks, overlap, strategy, seed
+        total_length, chunk_size, actual_max_chunks, overlap, strategy, seed
     )
-    
+
     chunks_generated = 0
     for start in start_positions:
-        if chunks_generated >= max_chunks:
+        if chunks_generated >= actual_max_chunks:
             break
-            
+
         end = start + chunk_size
         if end > total_length:
             continue
-        
+
         chunk = waveform[start:end]
-        
+
         # Validate chunk
         if torch.isnan(chunk).any() or torch.isinf(chunk).any():
             logger.warning(f"Skipping chunk {chunks_generated} due to invalid values")
             continue
-        
+
         yield chunk
         chunks_generated += 1
 
 
-def _get_chunk_positions(total_length: int, chunk_size: int, max_chunks: int, 
+def _get_chunk_positions(total_length: int, chunk_size: int, max_chunks: int,
                         overlap: float, strategy: str, seed: Optional[int] = None) -> List[int]:
     """
-    Get chunk start positions based on sampling strategy.
-    Excludes the first and last 15 seconds from chunk sampling.
-    
+    Get random, non-overlapping chunk start positions from the full audio duration.
+
     Args:
         total_length: Total audio length in samples
         chunk_size: Chunk size in samples
         max_chunks: Maximum number of chunks
-        overlap: Overlap fraction
-        strategy: Sampling strategy
+        overlap: Overlap fraction (ignored)
+        strategy: Sampling strategy (only "random" supported)
         seed: Random seed
-        
+
     Returns:
-        List of start positions for chunks
+        List of start positions for non-overlapping chunks
     """
-    # Calculate 15-second exclusion buffer in samples (assuming 16kHz sample rate)
-    exclusion_buffer = 15 * 16000
-    
-    # Define valid range for chunk sampling (excluding first/last 15s)
-    available_start = exclusion_buffer
-    available_end = total_length - exclusion_buffer - chunk_size
-    
-    # Check if we have enough space for any chunks
-    if available_end < available_start:
-        logger.warning(f"Audio too short for chunk sampling: need at least {(2 * exclusion_buffer + chunk_size) / 16000:.1f}s")
+    if strategy != "random":
+        raise ValueError(f"Only 'random' strategy is supported, got: {strategy}")
+
+    # Calculate valid positions where a chunk can start (ensuring chunk fits)
+    max_start_pos = total_length - chunk_size
+    if max_start_pos < 0:
         return []
-    
-    available_length = available_end - available_start
-    
-    if strategy == "sequential":
-        # Sequential chunks starting from 15s mark
-        step_size = int(chunk_size * (1 - overlap))
-        positions = []
-        for i in range(available_start, available_end + 1, step_size):
-            positions.append(i)
-            if len(positions) >= max_chunks:
-                break
-        return positions
-    
-    elif strategy == "random":
-        # Modified random sampling with guaranteed first chunk positioning
-        if seed is not None:
-            np.random.seed(seed)
-        
-        positions = []
-        
-        # First chunk: always in the first 10s of valid range
-        first_window_end = min(available_start + chunk_size, available_end)
-        if first_window_end > available_start:
-            pos1 = np.random.randint(available_start, first_window_end + 1)
-            positions.append(pos1)
-        
-        # Remaining chunks: randomly sample from the rest of the valid range
-        remaining_start = available_start + chunk_size
-        for i in range(1, max_chunks):
-            if remaining_start <= available_end:
-                pos = np.random.randint(remaining_start, available_end + 1)
-                positions.append(pos)
-        
-        return sorted(positions)
-    
-    elif strategy == "spaced":
-        # Evenly spaced within the valid range
-        if max_chunks == 1:
-            # Take from the middle of valid range
-            return [(available_start + available_end) // 2]
-        
-        # Divide valid range into segments
-        if max_chunks > 1:
-            segment_size = available_length // (max_chunks - 1)
-            positions = []
-            
-            for i in range(max_chunks):
-                if i == max_chunks - 1:
-                    # Last chunk: take from the end of valid range
-                    pos = available_end
-                else:
-                    pos = available_start + i * segment_size
-                
-                positions.append(pos)
-            
-            return positions
-        
-        return []
-    
-    else:
-        raise ValueError(f"Unknown chunk strategy: {strategy}")
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    # Generate non-overlapping random positions
+    positions = []
+    used_ranges = []  # (start, end) tuples for already placed chunks
+
+    for _ in range(max_chunks):
+        # Find valid positions that don't overlap with existing chunks
+        valid_positions = []
+        for pos in range(0, max_start_pos + 1):
+            chunk_end = pos + chunk_size
+            # Check if this position overlaps with any existing chunk
+            overlaps = any(not (chunk_end <= used_start or pos >= used_end)
+                          for used_start, used_end in used_ranges)
+            if not overlaps:
+                valid_positions.append(pos)
+
+        if not valid_positions:
+            break  # No more non-overlapping positions available
+
+        # Randomly select from valid positions
+        chosen_pos = np.random.choice(valid_positions)
+        positions.append(chosen_pos)
+        used_ranges.append((chosen_pos, chosen_pos + chunk_size))
+
+    return sorted(positions)
 
 class FullDatasetStatsCollector:
     """
@@ -1330,6 +1307,14 @@ def preprocess_and_extract_features_kfold(config: PreprocessingConfig) -> None:
             logger.info(f"Fold {fold_idx} statistics saved to {fold_stats_file}")
 
             all_fold_stats.append(fold_stats_data)
+
+            # Memory cleanup after each fold to prevent accumulation
+            import gc
+            clear_resampler_cache()  # Clear resampler cache
+            gc.collect()  # Force garbage collection
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()  # Clear CUDA cache
+            logger.info(f"Memory cleanup completed after fold {fold_idx}")
 
         # Save overall experiment statistics
         experiment_stats = {

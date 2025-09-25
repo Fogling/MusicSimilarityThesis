@@ -8,8 +8,8 @@ import argparse
 # ---- SET THESE ----
 SPOTIFY_CLIENT_ID = "c8f4b187f2b745f1ba363a67f69b15b3"
 SPOTIFY_CLIENT_SECRET = "8ae23b17695a4455b9ef9e603abfc06d"
-SPOTIFY_REDIRECT_URI = "https://b78f3107fa8c.ngrok-free.app"
-YOUTUBE_CLIENT_SECRET_FILE = "client_secrets.json"
+SPOTIFY_REDIRECT_URI = "https://50b1a75a01f1.ngrok-free.app"
+YOUTUBE_CLIENT_SECRET_FILE = "F:\Projects\Thesis\MusicSimilarityThesis\yt stuff\client_secrets.json"
 # --------------------
 
 def spotify_login():

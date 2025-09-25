@@ -37,7 +37,10 @@ from dataclasses import dataclass
 from config import ExperimentConfig, load_or_create_config
 from lr_scheduler import create_dual_group_optimizer, create_dual_group_scheduler, DualGroupLRCallback
 
-cache = os.environ['SLURM_JOB_TMP']
+import os
+# Set up cache directory for efficient model loading (safe - only caches files, not model state)
+cache_dir = os.getenv('HF_HOME', './huggingface_cache')
+os.makedirs(cache_dir, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(
@@ -959,7 +962,7 @@ class ImprovedASTTripletWrapper(nn.Module):
             logger.info(f"Loading pretrained model: {config.model.pretrained_model}")
             self.ast = ASTModel.from_pretrained(
                 config.model.pretrained_model,
-                cache_dir=cache,
+                cache_dir=cache_dir,
                 hidden_dropout_prob=config.model.ast_hidden_dropout_prob,
                 attention_probs_dropout_prob=config.model.ast_attention_dropout_prob
             )
@@ -1873,7 +1876,10 @@ def main():
             "output_dir": str(checkpoints_dir),
             "logging_strategy": config.training.logging_strategy,
             "eval_strategy": config.training.eval_strategy,
+            "eval_on_start": True,  # Enable initial evaluation at epoch 0
             "save_strategy": config.training.save_strategy,
+            "metric_for_best_model": "eval_accuracy",
+            "greater_is_better": True,
             "learning_rate": config.training.learning_rate,
             "per_device_train_batch_size": config.training.batch_size,
             "gradient_accumulation_steps": config.training.gradient_accumulation_steps,
@@ -2154,7 +2160,10 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
                 output_dir=str(checkpoints_dir),
                 logging_strategy=fold_config.training.logging_strategy,
                 eval_strategy=fold_config.training.eval_strategy,
+                eval_on_start=True,  # Enable initial evaluation at epoch 0
                 save_strategy="no",  # Don't save intermediate checkpoints in K-fold
+                metric_for_best_model="eval_accuracy",
+                greater_is_better=True,
                 learning_rate=fold_config.training.learning_rate,
                 per_device_train_batch_size=fold_config.training.batch_size,
                 gradient_accumulation_steps=fold_config.training.gradient_accumulation_steps,
@@ -2237,10 +2246,23 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
                 for epoch in sorted(epoch_data.keys()):
                     data = epoch_data[epoch]
                     training_history["epoch"].append(epoch)
-                    training_history["train_loss"].append(data.get('train_loss'))
+                    # HuggingFace logs training loss as 'loss', not 'train_loss'
+                    training_history["train_loss"].append(data.get('loss'))
                     training_history["eval_loss"].append(data.get('eval_loss'))
                     training_history["eval_accuracy"].append(data.get('eval_accuracy'))
                     training_history["learning_rate"].append(data.get('learning_rate'))
+
+            # Find best accuracy from training history
+            best_accuracy = 0.0
+            best_loss = float('inf')
+            if training_history["eval_accuracy"]:
+                # Filter out None values and find max
+                valid_accuracies = [acc for acc in training_history["eval_accuracy"] if acc is not None]
+                if valid_accuracies:
+                    best_accuracy = max(valid_accuracies)
+                    # Find corresponding loss for best accuracy epoch
+                    best_idx = training_history["eval_accuracy"].index(best_accuracy)
+                    best_loss = training_history["eval_loss"][best_idx] if training_history["eval_loss"][best_idx] is not None else final_metrics.get("eval_loss", 0.0)
 
             # Save comprehensive fold metrics
             fold_result = {
@@ -2248,8 +2270,8 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
                 "fold_seed": fold_config.training.seed,
                 "train_samples": len(train_dataset),
                 "test_samples": len(test_dataset),
-                "final_accuracy": final_metrics.get("eval_accuracy", 0.0),
-                "final_loss": final_metrics.get("eval_loss", 0.0),
+                "final_accuracy": best_accuracy,  # Now uses BEST accuracy, not final
+                "final_loss": best_loss,          # Loss corresponding to best accuracy
                 "training_history": training_history,
                 "final_metrics": final_metrics,
                 "train_runtime": train_result.metrics.get("train_runtime", 0.0),
@@ -2268,14 +2290,13 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
 
             fold_metrics.append(fold_result)
 
-            logger.info(f"Fold {fold_idx} completed - Final Accuracy: {final_metrics.get('eval_accuracy', 0.0):.4f}")
+            logger.info(f"Fold {fold_idx} completed - Best Accuracy: {best_accuracy:.4f} (Final: {final_metrics.get('eval_accuracy', 0.0):.4f})")
 
-            # Explicit cleanup to prevent state leakage between folds
+            # Cleanup to prevent state leakage between folds
             del trainer
             del model
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
-            # Reset any global trainer state
             import gc
             gc.collect()
 
