@@ -11,8 +11,8 @@
 set -euo pipefail
 
 ######### EDIT THESE #########
-ARCHIVE="$HOME/thesis/precomp_5Fold_7Gen_2Chunk.zip"          # .zip or .tar.gz both ok
-CHUNKDIR="precomp_5Fold_7Gen_2Chunk"
+ARCHIVE="$HOME/thesis/precomp_5Fold_7Gen_3Chunk.zip"          # .zip or .tar.gz both ok
+CHUNKDIR="precomp_5Fold_7Gen_3Chunk"
 CONFIG_JSON="$HOME/thesis/$1"
 TRAIN_PY="$HOME/thesis/AST_Triplet_kfold.py"
 OUT_BASE="$HOME/thesis/runs"                        # where results will be copied

@@ -414,7 +414,7 @@ class StratifiedSubgenreBatchSampler:
         """Check if dataset has been resampled and rebuild indices if needed."""
         current_triplets_id = id(self.dataset.triplets_active)
         if current_triplets_id != self._last_triplets_id:
-            logger.info("Dataset resampled detected, rebuilding stratified indices...")
+            #logger.info("Dataset resampled detected, rebuilding stratified indices...")
             self._rebuild_indices()
     
     def __iter__(self):

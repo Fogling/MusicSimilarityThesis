@@ -76,9 +76,12 @@ def main():
     if args.save_individual:
         # STFT (log axis)
         plt.figure(figsize=(6.2,3.6))
-        im = librosa.display.specshow(S_db, sr=sr, hop_length=args.hop,
-                                      x_axis="time", y_axis="log")
-        cb = plt.colorbar(im, format="%+2.0f dB", shrink=0.85)
+        img0 = librosa.display.specshow(
+            S_db, sr=sr, hop_length=args.hop,
+            x_axis="time", y_axis="log", ax=axs[0],
+            cmap="viridis", vmin=-80, vmax=0   # <-- AST-style colors
+        )
+        cb = plt.colorbar(img0, format="%+2.0f dB", shrink=0.85)
         cb.set_label("Power (dB)")
         plt.xlabel("Time (s)")
         plt.ylabel("Frequency (Hz, log)")
@@ -88,9 +91,12 @@ def main():
 
         # Log-Mel
         plt.figure(figsize=(6.2,3.6))
-        im = librosa.display.specshow(M_db, sr=sr, hop_length=args.hop,
-                                      x_axis="time", y_axis="mel")
-        cb = plt.colorbar(im, format="%+2.0f dB", shrink=0.85)
+        img1 = librosa.display.specshow(
+            M_db, sr=sr, hop_length=args.hop,
+            x_axis="time", y_axis="mel", ax=axs[1],
+            cmap="viridis", vmin=-80, vmax=0   # <-- AST-style colors
+        )
+        cb = plt.colorbar(img1, format="%+2.0f dB", shrink=0.85)
         cb.set_label("Power (dB)")
         plt.xlabel("Time (s)")
         plt.ylabel("Frequency (Mel)")
