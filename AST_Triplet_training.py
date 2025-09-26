@@ -2423,10 +2423,11 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
             # Process log history from trainer
             if hasattr(trainer.state, 'log_history') and trainer.state.log_history:
                 epoch_data = {}
+                max_training_epoch = fold_config.training.epochs - 1  # 0-indexed, so epochs-1 is the last valid epoch
 
                 for log_entry in trainer.state.log_history:
                     epoch = log_entry.get('epoch')
-                    if epoch is not None:
+                    if epoch is not None and epoch <= max_training_epoch:  # Filter out post-training logs
                         if epoch not in epoch_data:
                             epoch_data[epoch] = {}
 
@@ -2435,15 +2436,21 @@ def run_kfold_training(base_config: ExperimentConfig, preprocessed_dir: str, k: 
                             if key != 'epoch':
                                 epoch_data[epoch][key] = value
 
-                # Convert to lists for easier analysis
+                # Convert to lists for easier analysis, only including epochs that have at least some data
                 for epoch in sorted(epoch_data.keys()):
                     data = epoch_data[epoch]
-                    training_history["epoch"].append(epoch)
-                    # HuggingFace logs training loss as 'loss', not 'train_loss'
-                    training_history["train_loss"].append(data.get('loss'))
-                    training_history["eval_loss"].append(data.get('eval_loss'))
-                    training_history["eval_accuracy"].append(data.get('eval_accuracy'))
-                    training_history["learning_rate"].append(data.get('learning_rate'))
+
+                    # Only include epochs that have meaningful data (at least eval metrics or train loss)
+                    has_eval_data = 'eval_loss' in data or 'eval_accuracy' in data
+                    has_train_data = 'loss' in data
+
+                    if has_eval_data or has_train_data:
+                        training_history["epoch"].append(epoch)
+                        # HuggingFace logs training loss as 'loss', not 'train_loss'
+                        training_history["train_loss"].append(data.get('loss'))
+                        training_history["eval_loss"].append(data.get('eval_loss'))
+                        training_history["eval_accuracy"].append(data.get('eval_accuracy'))
+                        training_history["learning_rate"].append(data.get('learning_rate'))
 
             # Find best accuracy from training history
             best_accuracy = 0.0

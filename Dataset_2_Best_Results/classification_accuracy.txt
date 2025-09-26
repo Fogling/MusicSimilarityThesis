@@ -1,0 +1,10 @@
+Overall Accuracy: 0.6069
+Correct: 88/145
+
+Per-Subgenre Accuracy:
+  Chill House: 0.7692 (20/26)
+  Dark Techno: 0.8000 (24/30)
+  Emotional Techno: 0.4583 (11/24)
+  Funky House: 0.5714 (12/21)
+  Party House: 0.1364 (3/22)
+  Party Techno: 0.8182 (18/22)

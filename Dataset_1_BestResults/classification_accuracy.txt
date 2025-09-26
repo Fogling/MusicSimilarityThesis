@@ -1,0 +1,11 @@
+Overall Accuracy: 0.8812
+Correct: 89/101
+
+Per-Subgenre Accuracy:
+  Chill House: 0.8125 (13/16)
+  Chiller vibe goa: 0.7000 (7/10)
+  Dark Techno: 0.9444 (17/18)
+  Emotional Techno: 0.9333 (14/15)
+  Party Goa: 0.7500 (9/12)
+  Party House: 1.0000 (14/14)
+  Zyzz Music: 0.9375 (15/16)

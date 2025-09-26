@@ -1,0 +1,102 @@
+track,true_subgenre,predicted_subgenre,similarity,correct
+Act_Like_Love,Chill House,Chill House,0.94603944,True
+Calvin_Harris_-_Blessings_ft_Clementine_Douglas,Chill House,Chill House,0.7632221,True
+Carneyval_-_Afterglow_Official_Audio,Chill House,Chill House,0.697082,True
+DJ_Katch_x_Amira_Eldine_-_Youre_Makin_Me_High,Chill House,Party House,0.8156976,False
+Gorgon_City_-_Sky_High,Chill House,Chill House,0.9617436,True
+Harrison_-_WHATEVER_YOU_LIKE_feat_MVRII_Official_Video,Chill House,Party House,0.86754966,False
+I_Can_Finally_Know,Chill House,Chill House,0.8695398,True
+Jay_Dunham_-_Summer_On_My_Mind_Elli_Eli_Remix_Original_Version,Chill House,Chill House,0.8536615,True
+Love_Me_Better_Nico_Pusch_Remix,Chill House,Chill House,0.71879727,True
+MOWE_-_Birds_Flying_High,Chill House,Chill House,0.71677864,True
+NGTY_Alev_-_What_We_Had,Chill House,Party House,0.93891096,False
+Nights_Out,Chill House,Chill House,0.9147685,True
+Shermanology_Guitarra_Audio_Only,Chill House,Chill House,0.9551512,True
+Start_Movin,Chill House,Chill House,0.9593344,True
+Water,Chill House,Chill House,0.982799,True
+WHTKD_-_Tell_Me,Chill House,Chill House,0.82820445,True
+Benzoo_Ebrax_-_End_Of_The_Day_-_Official,Chiller vibe goa,Chiller vibe goa,0.98788774,True
+Blastoyz_Skazi_-_Heart_On_The_Tree_Official_Video,Chiller vibe goa,Party Goa,0.9267263,False
+DZP_Jilax_-_Formula_Labrinth_Flip,Chiller vibe goa,Party Goa,0.9834157,False
+Ghost_Rider_Ranji_-_Cant_sleep_Official_Lyrics_Video,Chiller vibe goa,Chiller vibe goa,0.9769782,True
+Ghost_Rider_Ranji_-_Hope,Chiller vibe goa,Chiller vibe goa,0.9899396,True
+Neelix_Symphonix_-_Stupid_as_Fvck_-_Official,Chiller vibe goa,Party Goa,0.9726864,False
+Section303_-_Distractions_Original_Mix_-_Official_Audio,Chiller vibe goa,Chiller vibe goa,0.99336267,True
+Symphonix_Davee_Ela_-_Dreaming_High_-_Official,Chiller vibe goa,Chiller vibe goa,0.9852872,True
+Symphonix_Static_Movement_-_Awakening_Soul_-_Official,Chiller vibe goa,Chiller vibe goa,0.99213254,True
+The_Way_Youre_With_Me_Original_Mix,Chiller vibe goa,Chiller vibe goa,0.9364431,True
+753_-_Where_is_The_Heaven_Official_Videoclip,Dark Techno,Dark Techno,0.9023901,True
+Greg_Notill_Vince_Weyn_-_Far_Out_Distance_Original_Mix,Dark Techno,Dark Techno,0.9846734,True
+KASST_-_Road_To_Nowhere_ROAD1,Dark Techno,Dark Techno,0.88460296,True
+Living_in_my_mind,Dark Techno,Dark Techno,0.7845347,True
+L_V_N_-_Hypomania_CR013,Dark Techno,Dark Techno,0.9956967,True
+L_V_N_-_I_Thought_You_Were_Real_COUP005,Dark Techno,Dark Techno,0.8700721,True
+L_V_N_-_Yet_To_Come,Dark Techno,Dark Techno,0.9866502,True
+Michael_Klein_-_Wasser,Dark Techno,Dark Techno,0.69205284,True
+Niereich_Shadym_-_Dreams_Original_Mix,Dark Techno,Dark Techno,0.98959476,True
+Niki_Istrefi_-_Red_Armor_EUROMANTIC001,Dark Techno,Dark Techno,0.9944282,True
+Rigid_Kobosil_44_Rush_Mix,Dark Techno,Dark Techno,0.8627788,True
+Source_Code,Dark Techno,Dark Techno,0.9865678,True
+The_Boys_In_Ankara,Dark Techno,Dark Techno,0.98705566,True
+To_My_Berlin_Ravers,Dark Techno,Emotional Techno,0.6974894,False
+Trouble,Dark Techno,Dark Techno,0.9246273,True
+Umbraid_-_Just_Focus_JELLVA002,Dark Techno,Dark Techno,0.99008507,True
+Unter_Strom,Dark Techno,Dark Techno,0.9004061,True
+Velasquez_-_Arise_Original_Mix,Dark Techno,Dark Techno,0.9940382,True
+303_Sound_Of_The_Underground,Emotional Techno,Emotional Techno,0.7524934,True
+Akros_-_Loud_Enough,Emotional Techno,Emotional Techno,0.6957241,True
+Almost_There,Emotional Techno,Emotional Techno,0.90740067,True
+COLOUR_MY_HEART,Emotional Techno,Emotional Techno,0.7082076,True
+Eigentlich_Trance_Version,Emotional Techno,Party Goa,0.6195879,False
+FoxTune_-_YOU_MAKE_ME_FEEL_ALIVE,Emotional Techno,Emotional Techno,0.8156185,True
+Gusted_-_Jet_Plane,Emotional Techno,Emotional Techno,0.9904044,True
+LIGHTS_GO_DOWN_-_Sped_Up,Emotional Techno,Emotional Techno,0.9332335,True
+lonelysoul_x_KAMI_-_Miracle_Techno_Remix,Emotional Techno,Emotional Techno,0.94811213,True
+PAST_LIVES_-_HARDTEKK,Emotional Techno,Emotional Techno,0.94466287,True
+Patience,Emotional Techno,Emotional Techno,0.868577,True
+southstar_-_Cover_Up_My_Face_Official_Visualizer,Emotional Techno,Emotional Techno,0.97842264,True
+Telephone_LUCKY_DEMON_STRWBERRY_Dallax_Techno_Remix,Emotional Techno,Emotional Techno,0.98373127,True
+Us_Two,Emotional Techno,Emotional Techno,0.9091382,True
+Would_You_Say_Yes,Emotional Techno,Emotional Techno,0.6187264,True
+Best_Of_You,Party Goa,Party Goa,0.9210613,True
+Cloud7_-_Lost_Cartoon_Video,Party Goa,Emotional Techno,0.6502495,False
+Jilax_-_Shadows_2023_Edit,Party Goa,Party Goa,0.97786176,True
+Lost,Party Goa,Party Goa,0.59431267,True
+LUMX_Gabry_Ponte_-_Monster_Lyrics,Party Goa,Party House,0.4494258,False
+PSY-TRANCE_George_Michael_-_Careless_Whisper_TOX1C_Remix,Party Goa,Party Goa,0.8750691,True
+PSY-TRANCE_Imagine_Dragons_-_Believer_Flash_Jack_Remix,Party Goa,Party Goa,0.98121077,True
+PSY-TRANCE_I_Like_To_Move_It_WoZa_Remix_Madagascar,Party Goa,Party Goa,0.8814118,True
+PSY-TRANCE_Sevenn_feat_Kathy_-_Colors_Of_The_Rainbow_UltimateBlast_Dorel_Remix,Party Goa,Party Goa,0.76387715,True
+Psycho_Remix,Party Goa,Party Goa,0.96911365,True
+The_Road_Im_On,Party Goa,Chiller vibe goa,0.9753981,False
+WHITENO1SE_Ranji_Ft_Nina_Nesbitt_-_The_Moments_Im_Missing_Radio_Edit,Party Goa,Party Goa,0.7653966,True
+DIE_YOUNG_-_Old_Jim_Guapa_Official_Video,Party House,Party House,0.8703693,True
+DOD_-_Sleepless,Party House,Party House,0.7183418,True
+Jay_Pryor_-_All_This,Party House,Party House,0.8622353,True
+Jyye_-_Tender_Love,Party House,Party House,0.81410575,True
+LEAVE_THE_LIGHTS_ON-Phatt_Lenny_Dwin,Party House,Party House,0.9806305,True
+Loud_Luxury_-_Sex_Like_Me,Party House,Party House,0.8908933,True
+Nathan_Dawe_x_Shayan_-_Over_You_Official_Lyric_Video,Party House,Party House,0.9839486,True
+Nea_-_Some_Say_-_Felix_Jaehn_Remix,Party House,Party House,0.83992374,True
+NORTKASH_BROHM_-_SHE_DOESNT_MIND,Party House,Party House,0.9309646,True
+NO_STRESS_-_Froro_Official_Video,Party House,Party House,0.72963035,True
+SWEATER_WEATHER_Gaullin_Remix,Party House,Party House,0.89931417,True
+Tchami_-_After_Life_Feat_Stacy_Barthe,Party House,Party House,0.67606133,True
+Tchami_-_Promesses_Pep_Rash_Bootleg,Party House,Party House,0.9477113,True
+WRITTEN_IN_THE_STARS_-_Kastuvas_Official_Video,Party House,Party House,0.82066864,True
+.webm,Zyzz Music,Zyzz Music,0.94620204,True
+AGONY_Flerian_Lieless_-_In_Your_Head_Official_Music_Video,Zyzz Music,Zyzz Music,0.9943687,True
+Alec_Benjamin_-_Let_Me_Down_Slowly_Tevvez_Remix_Parallel_Universe,Zyzz Music,Zyzz Music,0.8003645,True
+ANGUISH_hxvvxn_Risuyu_krovyu_Official_Video,Zyzz Music,Emotional Techno,0.7431595,False
+ANGUISH_ily_-_Krasavitsa_OUT_ON_SPOTIFY,Zyzz Music,Zyzz Music,0.98708916,True
+Can_You_Feel_My_Heart_feat_Annie_Hardstyle,Zyzz Music,Zyzz Music,0.98820287,True
+Dance_of_Angels_Zyzz_Hardstyle,Zyzz Music,Zyzz Music,0.989939,True
+dont_stop_the_music_Hardstyle,Zyzz Music,Zyzz Music,0.7931386,True
+Etazhi_-_Remix,Zyzz Music,Zyzz Music,0.9573645,True
+Heaven_Eternity_Hardstyle_Zyzz_Said,Zyzz Music,Zyzz Music,0.8876157,True
+Lights_On,Zyzz Music,Zyzz Music,0.79751086,True
+lil_peep_x_lil_tracy_-_WitchBlades_CrazyScarry_Bootleg,Zyzz Music,Zyzz Music,0.8745334,True
+Oblivion_Zyzz_Hardstyle,Zyzz Music,Zyzz Music,0.9062003,True
+RAVE_-_LOVE_ON_RAVE,Zyzz Music,Zyzz Music,0.8485793,True
+SICK_CVNT_-_LIVIN_LA_VIDA_LOCA_HARDSTYLE,Zyzz Music,Zyzz Music,0.6914915,True
+Stay_High,Zyzz Music,Zyzz Music,0.9855884,True
