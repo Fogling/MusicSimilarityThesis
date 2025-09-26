@@ -184,7 +184,28 @@ class ResampleCallback(TrainerCallback):
 
     def on_epoch_begin(self, args, state, control, **kwargs):
         current_epoch = int(state.epoch) + 1
-        
+
+        # Log negative mining status at epoch start
+        mining_config = getattr(self.config.data, "negative_mining", "none")
+        if mining_config != "none":
+            mining_start = getattr(self.config.data, "negative_mining_start_epoch", 1)
+            if current_epoch >= mining_start:
+                # Determine mining strategy and ratio for this epoch
+                if mining_config == "progressive":
+                    progression_epochs = getattr(self.config.data, "mining_progression_epochs", 3)
+                    strategy = "semi_hard" if (current_epoch - mining_start) < progression_epochs else "hard"
+                else:
+                    strategy = mining_config
+
+                mining_ratio = getattr(self.config.data, "mining_ratio", 1.0)
+                warmup_epochs = getattr(self.config.data, "mining_warmup_epochs", 0)
+                if warmup_epochs > 0 and (current_epoch - mining_start) < warmup_epochs:
+                    ratio = mining_ratio * (current_epoch - mining_start + 1) / warmup_epochs
+                else:
+                    ratio = mining_ratio
+
+                logger.info(f"[Mining] Epoch {current_epoch}: strategy={strategy}, ratio={ratio:.2f}")
+
         if not (self.enabled and hasattr(self.train_dataset, "resample_for_new_epoch")):
             return
             
@@ -250,18 +271,15 @@ class EarlyStoppingCallback(TrainerCallback):
         self.enabled = config.training.enable_early_stopping
         self.patience = config.training.early_stopping_patience
         self.min_delta = config.training.early_stopping_min_delta
-        self.post_resample_grace_epochs = config.training.post_resample_grace_epochs
-        
+
         # State tracking
         self.best_accuracy = -float('inf')
         self.epochs_without_improvement = 0
-        self.last_resample_epoch = -1
         self.resample_callback = resample_callback
         self.stopped_early = False
         
         if self.enabled:
-            logger.info(f"Early stopping enabled: patience={self.patience}, min_delta={self.min_delta}, "
-                       f"post_resample_grace={self.post_resample_grace_epochs}")
+            logger.info(f"Early stopping enabled: patience={self.patience}, min_delta={self.min_delta}")
         else:
             logger.info("Early stopping disabled")
     
@@ -310,11 +328,6 @@ class EarlyStoppingCallback(TrainerCallback):
         current_epoch = int(state.epoch) if state.epoch is not None else 0
         eval_accuracy = logs.get('eval_accuracy', 0)
         
-        # Check if we're in grace period after resampling
-        epochs_since_resample = current_epoch - self.last_resample_epoch
-        in_grace_period = (self.last_resample_epoch >= 0 and 
-                          epochs_since_resample <= self.post_resample_grace_epochs)
-        
         # Update best accuracy and patience counter
         improvement = eval_accuracy - self.best_accuracy
         if improvement > self.min_delta:
@@ -326,25 +339,19 @@ class EarlyStoppingCallback(TrainerCallback):
             self.epochs_without_improvement += 1
             logger.debug(f"[EarlyStopping] No improvement: {self.epochs_without_improvement}/{self.patience} "
                         f"(current: {eval_accuracy:.4f}, best: {self.best_accuracy:.4f})")
-        
+
         # Early stopping decision logic
-        should_stop = (self.epochs_without_improvement >= self.patience and 
-                      not in_grace_period)
-        
+        should_stop = self.epochs_without_improvement >= self.patience
+
         if should_stop:
             logger.info(f"[EarlyStopping] Stopping training: no improvement for {self.patience} epochs "
                        f"(best accuracy: {self.best_accuracy:.4f} at epoch {current_epoch - self.epochs_without_improvement})")
             control.should_training_stop = True
             self.stopped_early = True
-            
-        elif self.epochs_without_improvement >= self.patience and in_grace_period:
-            logger.info(f"[EarlyStopping] Would stop training, but in grace period "
-                       f"({epochs_since_resample}/{self.post_resample_grace_epochs} epochs since resampling)")
-        
+
         # Log current status every few epochs for visibility
         if current_epoch % 3 == 0 or self.epochs_without_improvement >= self.patience - 1:
-            grace_status = f" (in grace period: {epochs_since_resample}/{self.post_resample_grace_epochs})" if in_grace_period else ""
-            logger.info(f"[EarlyStopping] Status: {self.epochs_without_improvement}/{self.patience} epochs without improvement{grace_status}")
+            logger.info(f"[EarlyStopping] Status: {self.epochs_without_improvement}/{self.patience} epochs without improvement")
     
     def on_train_end(self, args, state, control, **kwargs):
         """Log final early stopping status."""
@@ -976,19 +983,24 @@ class ImprovedASTTripletWrapper(nn.Module):
         self.projector = self._build_projection_head()
         self.triplet_margin = config.training.triplet_margin
 
+        # Keep config field access for compatibility (mining implementation removed)
         self.negative_mining = str(getattr(self.config.data, "negative_mining", "none")).lower()
-        if self.negative_mining not in {"none", "semi_hard", "hard"}:
-            self.negative_mining = "none"
 
         # Margin scheduling parameters
         self.initial_margin = config.training.triplet_margin
         self.margin_schedule_end_epoch = config.training.margin_schedule_end_epoch
         self.margin_schedule_max = config.training.margin_schedule_max
         self.current_epoch = 0
+
+        # Dynamic margin reduction for hard mining
+        self.mining_margin_reduction = config.training.mining_margin_reduction
+        self.mining_margin_value = config.training.mining_margin_value
+        self.mining_margin_recovery_epochs = config.training.mining_margin_recovery_epochs
+        self.mining_margin_final = config.training.mining_margin_final
         
         logger.info(f"Model initialized with projection to {config.model.output_dim}D")
         logger.info(f"Margin scheduling: {self.initial_margin} → {self.margin_schedule_max} over {self.margin_schedule_end_epoch} epochs")
-        logger.info(f"Negative mining: {self.negative_mining}")
+        # Negative mining implementation removed - will be re-implemented with modern approaches
         
     
     def _build_projection_head(self) -> nn.Module:
@@ -1062,16 +1074,45 @@ class ImprovedASTTripletWrapper(nn.Module):
         self.current_epoch = epoch
         current_margin = self.get_current_margin()
         self.triplet_margin = current_margin
-        #logger.info(f"Epoch {epoch}: Using margin {current_margin:.3f}")
+        logger.info(f"Epoch {epoch}: Using margin {current_margin:.3f}")
     
     def get_current_margin(self) -> float:
-        """Get current margin based on linear scheduling."""
-        if self.current_epoch >= self.margin_schedule_end_epoch:
-            return self.margin_schedule_max
-        
-        # Linear interpolation from initial_margin to max_margin
-        progress = self.current_epoch / self.margin_schedule_end_epoch
-        return self.initial_margin + (self.margin_schedule_max - self.initial_margin) * progress
+        """Get current margin with dynamic reduction for hard mining."""
+        if not self.mining_margin_reduction:
+            # Standard margin scheduling
+            if self.current_epoch >= self.margin_schedule_end_epoch:
+                return self.margin_schedule_max
+            progress = self.current_epoch / self.margin_schedule_end_epoch
+            return self.initial_margin + (self.margin_schedule_max - self.initial_margin) * progress
+
+        # Dynamic margin reduction logic
+        mining_start_epoch = getattr(self.config.data, "negative_mining_start_epoch", 1)
+        mining_strategy = getattr(self.config.data, "negative_mining", "none")
+
+        # Determine when hard mining actually starts
+        hard_mining_start_epoch = mining_start_epoch
+        if mining_strategy == "progressive":
+            progression_epochs = getattr(self.config.data, "mining_progression_epochs", 3)
+            hard_mining_start_epoch = mining_start_epoch + progression_epochs
+
+        # Phase 1: Normal margin schedule until hard mining starts
+        if self.current_epoch < hard_mining_start_epoch:
+            if self.current_epoch >= self.margin_schedule_end_epoch:
+                return self.margin_schedule_max
+            progress = self.current_epoch / self.margin_schedule_end_epoch
+            return self.initial_margin + (self.margin_schedule_max - self.initial_margin) * progress
+
+        # Phase 2: Drop to reduced margin when hard mining starts
+        epochs_since_hard_mining = self.current_epoch - hard_mining_start_epoch
+        if epochs_since_hard_mining < self.mining_margin_recovery_epochs:
+            # Gradual recovery from mining_margin_value to mining_margin_final
+            if self.mining_margin_recovery_epochs == 0:
+                return self.mining_margin_value
+            recovery_progress = epochs_since_hard_mining / self.mining_margin_recovery_epochs
+            return self.mining_margin_value + (self.mining_margin_final - self.mining_margin_value) * recovery_progress
+
+        # Phase 3: Final margin value after recovery
+        return self.mining_margin_final
     
     def embed(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Generate embeddings with error handling."""
@@ -1142,31 +1183,49 @@ class ImprovedASTTripletWrapper(nn.Module):
 
             dist_ap, dist_an = dist_ap_def, dist_an_def
 
-            # 3) Optional batch-wise mining (semi-hard / hard)
-            #    We only attempt mining if:
-            #      - config sets negative_mining to "semi_hard" or "hard"
-            #      - current epoch >= negative_mining_start_epoch
-            #      - the collator passed subgenre labels for this batch
-            #      - we're in training mode (not evaluation)
-            mining_start_epoch = getattr(self.config.data, "negative_mining_start_epoch", 1)
-            mining_enabled = (self.negative_mining in {"semi_hard", "hard"} and 
-                            self.current_epoch >= mining_start_epoch and
-                            anchor_subgenre is not None and 
-                            self.training)
-            
-            if mining_enabled:
+            # 3) Modern batch-level online mining (if enabled and in training mode)
+            #    CRITICAL: Only during training, never during evaluation
+            if (self.training and
+                anchor_subgenre is not None and
+                negative_subgenre is not None and
+                self.negative_mining != "none"):
+
                 try:
-                    mined = self._mine_within_batch(emb_anchor, emb_positive, emb_negative, anchor_subgenre, negative_subgenre)
-                    # mined is a tuple (d_ap, d_an) or (None, None) if mining couldn't run
-                    if mined[0] is not None:
-                        dist_ap, dist_an = mined
-                        logger.debug(f"[Mining] Applied {self.negative_mining} mining at epoch {self.current_epoch}")
+                    mining_start_epoch = getattr(self.config.data, "negative_mining_start_epoch", 1)
+
+                    # Get progressive mining parameters with defaults for backward compatibility
+                    mining_progression_epochs = getattr(self.config.data, "mining_progression_epochs", 3)
+                    mining_ratio = getattr(self.config.data, "mining_ratio", 1.0)
+                    mining_warmup_epochs = getattr(self.config.data, "mining_warmup_epochs", 2)
+
+                    # Determine effective mining strategy for current epoch
+                    effective_strategy = self.get_progressive_mining_strategy(
+                        self.negative_mining, self.current_epoch, mining_start_epoch, mining_progression_epochs
+                    )
+
+                    # Apply mining ratio warmup
+                    effective_ratio = self.get_mining_ratio_with_warmup(
+                        mining_ratio, self.current_epoch, mining_start_epoch, mining_warmup_epochs
+                    )
+
+                    # Apply mining if strategy is not "none" and ratio > 0
+                    if effective_strategy != "none" and effective_ratio > 0.0:
+                        mined_dist_ap, mined_dist_an = self.mine_batch_online(
+                            emb_anchor, emb_positive, emb_negative,
+                            anchor_subgenre, negative_subgenre,
+                            mining_strategy=effective_strategy,
+                            mining_ratio=effective_ratio
+                        )
+
+                        # Use mined distances
+                        dist_ap, dist_an = mined_dist_ap, mined_dist_an
+
+                        # Mining logging moved to epoch level to avoid spam
+
                 except Exception as e:
-                    # Safe fallback: keep default distances (dataset triplets)
-                    print(f"[Mining] Mining failed, fallback to dataset triplets: {e}")
-                    logger.warning(f"[Mining] Mining failed, fallback to dataset triplets: {e}")
-            elif self.negative_mining in {"semi_hard", "hard"} and self.current_epoch < mining_start_epoch:
-                logger.debug(f"[Mining] Skipping mining at epoch {self.current_epoch} (starts at epoch {mining_start_epoch})")
+                    # Safe fallback: use original distances if mining fails
+                    logger.warning(f"[Mining] Mining failed at epoch {self.current_epoch}: {e}")
+                    logger.warning("[Mining] Falling back to original dataset triplets")
 
             # 4) Triplet loss with margin
             #    Enforce: d_an >= d_ap + margin  ->  relu(d_ap - d_an + m)
@@ -1194,94 +1253,228 @@ class ImprovedASTTripletWrapper(nn.Module):
             print(f"[Forward] Forward pass failed: {e}")
             logger.error(f"[Forward] Forward pass failed: {e}")
             raise
-        
-    def _mine_within_batch(self, emb_anchor, emb_positive, emb_negative, anchor_subgenres, negative_subgenres):
+
+    def mine_batch_online(self, emb_anchor: torch.Tensor, emb_positive: torch.Tensor, emb_negative: torch.Tensor,
+                         anchor_labels: List[str], negative_labels: List[str],
+                         mining_strategy: str = "semi_hard", mining_ratio: float = 1.0) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Perform batch-wise mining with full 3B candidate pool.
+        Modern batch-level online negative mining implementation.
 
-        Inputs:
-        - emb_anchor: (B, D) anchor embeddings
-        - emb_positive: (B, D) positive embeddings (paired with anchors)  
-        - emb_negative: (B, D) negative embeddings (paired with anchors)
-        - anchor_subgenres: list of anchor/positive subgenre strings, length B
-        - negative_subgenres: list of negative subgenre strings, length B
+        Based on 2024 best practices:
+        - Uses entire batch as candidate pool for maximum diversity
+        - Supports progressive mining strategies (semi-hard -> hard)
+        - Implements partial batch mining (configurable mining ratio)
+        - Efficient vectorized operations for performance
 
-        Behavior:
-        - Hardest positive: the positive sample in the batch with the same label
-                            that has the *largest* distance to the anchor.
-        - Semi-hard negative: a negative (different label) that is farther than
-                                the positive but as close as possible.
-        - Hard negative fallback: if no semi-hard exists, use the closest negative.
+        Args:
+            emb_anchor: (B, D) anchor embeddings
+            emb_positive: (B, D) positive embeddings
+            emb_negative: (B, D) negative embeddings
+            anchor_labels: List of anchor subgenre labels (length B)
+            negative_labels: List of negative subgenre labels (length B)
+            mining_strategy: "semi_hard", "hard", or "progressive"
+            mining_ratio: Fraction of batch to apply mining to (0.0-1.0)
 
         Returns:
-        (d_ap, d_an) = per-sample distances (tensor length B),
-        or (None, None) if mining not possible.
+            (dist_ap, dist_an): Tuple of anchor-positive and anchor-negative distances
         """
-        if not anchor_subgenres or emb_anchor.size(0) != len(anchor_subgenres):
-            return None, None
-        if not negative_subgenres or len(negative_subgenres) != len(anchor_subgenres):
-            return None, None
-
         device = emb_anchor.device
-        B = emb_anchor.size(0)
+        batch_size = emb_anchor.size(0)
 
-        # Candidate pool = anchors + positives + negatives (3B total candidates)
-        emb_cand = torch.cat([emb_anchor, emb_positive, emb_negative], dim=0)
+        # Input validation
+        if batch_size == 0 or not anchor_labels or len(anchor_labels) != batch_size:
+            logger.warning("[Mining] Invalid inputs, falling back to original distances")
+            return self._compute_original_distances(emb_anchor, emb_positive, emb_negative)
 
-        # Create combined label list: [anchor_labels, anchor_labels, negative_labels]
-        # Note: positives have same labels as anchors, negatives have their own labels
-        all_subgenres = anchor_subgenres + anchor_subgenres + negative_subgenres
-        
-        # Convert labels to integers for mask building
-        uniq = {s: i for i, s in enumerate(sorted(set(all_subgenres)))}
-        y_anchor = torch.tensor([uniq[s] for s in anchor_subgenres], device=device)
-        y_cand = torch.tensor([uniq[s] for s in all_subgenres], device=device)
+        if not negative_labels or len(negative_labels) != batch_size:
+            logger.warning("[Mining] Missing negative labels, falling back to original distances")
+            return self._compute_original_distances(emb_anchor, emb_positive, emb_negative)
 
-        # Distance matrix: (B, 3B)
-        sim = torch.matmul(emb_anchor, emb_cand.T).clamp(-1, 1)
-        D = 1.0 - sim
+        try:
+            # Create batch-level candidate pool (3B candidates total)
+            all_embeddings = torch.cat([emb_anchor, emb_positive, emb_negative], dim=0)  # (3B, D)
 
-        # Same-class mask (same subgenre as anchor)
-        same = (y_anchor.unsqueeze(1) == y_cand.unsqueeze(0))
-        
-        # Exclude trivial self matches (anchor[i] == anchor[i])
-        eye = torch.zeros_like(D, dtype=torch.bool)
-        eye[:, :B] = torch.eye(B, device=device, dtype=torch.bool)
-        same = same & (~eye)
+            # Create combined label array
+            # Positives have same labels as anchors, negatives have their own labels
+            all_labels = anchor_labels + anchor_labels + negative_labels
 
-        if not same.any():
-            return None, None
+            # Convert labels to integer indices for efficient masking
+            unique_labels = sorted(set(all_labels))
+            label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
+            anchor_label_indices = torch.tensor([label_to_idx[label] for label in anchor_labels], device=device)
+            all_label_indices = torch.tensor([label_to_idx[label] for label in all_labels], device=device)
 
-        # Hardest positive: max distance among same-class candidates
-        D_pos = D.clone()
-        D_pos[~same] = -float("inf")
-        pos_idx = D_pos.argmax(dim=1)
-        d_ap = D.gather(1, pos_idx.unsqueeze(1)).squeeze(1)
+            # Compute pairwise distance matrix: (B, 3B)
+            # Using cosine distance: d = 1 - cosine_similarity
+            similarity = torch.matmul(emb_anchor, all_embeddings.T)  # (B, 3B)
+            similarity = torch.clamp(similarity, -1.0, 1.0)  # Numerical stability
+            distance_matrix = 1.0 - similarity  # (B, 3B)
 
-        # Negatives = different-class candidates
-        diff = ~same
-        if self.negative_mining == "semi_hard":
-            # Semi-hard negatives: farther than positive but as close as possible
-            mask = diff & (D > d_ap.unsqueeze(1))
-            D_neg = D.clone()
-            D_neg[~mask] = float("inf")
-            neg_idx = D_neg.argmin(dim=1)
-            no_semi = torch.isinf(D_neg.gather(1, neg_idx.unsqueeze(1)).squeeze(1))
-            if no_semi.any():
-                # Fallback: hard negatives (closest different-class)
-                D_hard = D.clone()
-                D_hard[~diff] = float("inf")
-                hard_idx = D_hard.argmin(dim=1)
-                neg_idx = torch.where(no_semi, hard_idx, neg_idx)
+            # Create masks for same-class (positive) and different-class (negative) candidates
+            same_class_mask = (anchor_label_indices.unsqueeze(1) == all_label_indices.unsqueeze(0))  # (B, 3B)
+
+            # Exclude self-matches (anchor[i] with anchor[i])
+            self_match_mask = torch.zeros_like(same_class_mask, dtype=torch.bool)
+            self_match_mask[:, :batch_size] = torch.eye(batch_size, device=device, dtype=torch.bool)
+            same_class_mask = same_class_mask & (~self_match_mask)
+
+            different_class_mask = ~same_class_mask & (~self_match_mask)
+
+            # Select hardest positives (maximum distance among same-class candidates)
+            positive_distances = distance_matrix.clone()
+            positive_distances[~same_class_mask] = -float('inf')  # Mask out non-positives
+
+            if not same_class_mask.any():
+                logger.warning("[Mining] No valid positive candidates found, falling back to original distances")
+                return self._compute_original_distances(emb_anchor, emb_positive, emb_negative)
+
+            hardest_positive_indices = positive_distances.argmax(dim=1)  # (B,)
+            dist_ap = positive_distances.gather(1, hardest_positive_indices.unsqueeze(1)).squeeze(1)  # (B,)
+
+            # Select negatives based on mining strategy
+            if mining_strategy == "semi_hard":
+                dist_an = self._mine_semi_hard_negatives(distance_matrix, different_class_mask, dist_ap)
+            elif mining_strategy == "hard":
+                dist_an = self._mine_hard_negatives(distance_matrix, different_class_mask)
+            elif mining_strategy == "progressive":
+                # Use semi-hard early, transition to hard later (handled at higher level)
+                dist_an = self._mine_semi_hard_negatives(distance_matrix, different_class_mask, dist_ap)
+            else:
+                logger.warning(f"[Mining] Unknown strategy '{mining_strategy}', using semi_hard")
+                dist_an = self._mine_semi_hard_negatives(distance_matrix, different_class_mask, dist_ap)
+
+            # Apply partial batch mining if mining_ratio < 1.0
+            if mining_ratio < 1.0:
+                dist_ap, dist_an = self._apply_partial_mining(
+                    emb_anchor, emb_positive, emb_negative, dist_ap, dist_an, mining_ratio
+                )
+
+            return dist_ap, dist_an
+
+        except Exception as e:
+            logger.warning(f"[Mining] Mining failed with error: {e}, falling back to original distances")
+            return self._compute_original_distances(emb_anchor, emb_positive, emb_negative)
+
+    def _mine_semi_hard_negatives(self, distance_matrix: torch.Tensor, different_class_mask: torch.Tensor,
+                                 dist_ap: torch.Tensor) -> torch.Tensor:
+        """Mine semi-hard negatives: d_an > d_ap but as small as possible."""
+        # Semi-hard condition: distance to negative > distance to positive
+        semi_hard_mask = different_class_mask & (distance_matrix > dist_ap.unsqueeze(1))
+
+        negative_distances = distance_matrix.clone()
+        negative_distances[~semi_hard_mask] = float('inf')  # Mask out non-semi-hard negatives
+
+        # Find closest semi-hard negative for each anchor
+        hardest_negative_indices = negative_distances.argmin(dim=1)  # (B,)
+        dist_an = negative_distances.gather(1, hardest_negative_indices.unsqueeze(1)).squeeze(1)  # (B,)
+
+        # Fallback to hard negatives for samples with no semi-hard negatives
+        no_semi_hard = torch.isinf(dist_an)
+        if no_semi_hard.any():
+            hard_dist_an = self._mine_hard_negatives(distance_matrix, different_class_mask)
+            dist_an = torch.where(no_semi_hard, hard_dist_an, dist_an)
+
+        return dist_an
+
+    def _mine_hard_negatives(self, distance_matrix: torch.Tensor, different_class_mask: torch.Tensor) -> torch.Tensor:
+        """Mine hard negatives: closest different-class samples."""
+        negative_distances = distance_matrix.clone()
+        negative_distances[~different_class_mask] = float('inf')  # Mask out non-negatives
+
+        hardest_negative_indices = negative_distances.argmin(dim=1)  # (B,)
+        dist_an = negative_distances.gather(1, hardest_negative_indices.unsqueeze(1)).squeeze(1)  # (B,)
+
+        return dist_an
+
+    def _apply_partial_mining(self, emb_anchor: torch.Tensor, emb_positive: torch.Tensor,
+                             emb_negative: torch.Tensor, mined_dist_ap: torch.Tensor,
+                             mined_dist_an: torch.Tensor, mining_ratio: float) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply mining to only a fraction of the batch, keep original distances for the rest."""
+        batch_size = emb_anchor.size(0)
+        num_mined = int(batch_size * mining_ratio)
+
+        if num_mined == 0:
+            # No mining, return original distances
+            return self._compute_original_distances(emb_anchor, emb_positive, emb_negative)
+        elif num_mined >= batch_size:
+            # Mine all samples
+            return mined_dist_ap, mined_dist_an
+
+        # Randomly select samples to mine
+        mine_indices = torch.randperm(batch_size, device=emb_anchor.device)[:num_mined]
+        keep_mask = torch.zeros(batch_size, dtype=torch.bool, device=emb_anchor.device)
+        keep_mask[mine_indices] = True
+
+        # Compute original distances for non-mined samples
+        original_dist_ap, original_dist_an = self._compute_original_distances(emb_anchor, emb_positive, emb_negative)
+
+        # Combine mined and original distances
+        final_dist_ap = torch.where(keep_mask, mined_dist_ap, original_dist_ap)
+        final_dist_an = torch.where(keep_mask, mined_dist_an, original_dist_an)
+
+        return final_dist_ap, final_dist_an
+
+    def _compute_original_distances(self, emb_anchor: torch.Tensor, emb_positive: torch.Tensor,
+                                   emb_negative: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute original dataset triplet distances."""
+        dist_ap = 1.0 - F.cosine_similarity(emb_anchor, emb_positive, dim=1)
+        dist_an = 1.0 - F.cosine_similarity(emb_anchor, emb_negative, dim=1)
+        return dist_ap, dist_an
+
+    def get_progressive_mining_strategy(self, mining_strategy: str, current_epoch: int,
+                                      mining_start_epoch: int, progression_epochs: int = 3) -> str:
+        """
+        Determine the current mining strategy for progressive mining.
+
+        Progressive mining stages:
+        1. Epochs 0 to mining_start_epoch: No mining
+        2. Epochs mining_start_epoch to (mining_start_epoch + progression_epochs): Semi-hard mining
+        3. Epochs (mining_start_epoch + progression_epochs) onwards: Hard mining
+
+        Args:
+            mining_strategy: Base mining strategy ("progressive", "semi_hard", "hard", "none")
+            current_epoch: Current training epoch
+            mining_start_epoch: Epoch when mining starts
+            progression_epochs: Number of epochs to use semi-hard before switching to hard
+
+        Returns:
+            Effective mining strategy for the current epoch
+        """
+        if mining_strategy != "progressive":
+            return mining_strategy
+
+        if current_epoch < mining_start_epoch:
+            return "none"
+        elif current_epoch < mining_start_epoch + progression_epochs:
+            return "semi_hard"
         else:
-            # Hard negatives directly (closest different-class)
-            D_hard = D.clone()
-            D_hard[~diff] = float("inf")
-            neg_idx = D_hard.argmin(dim=1)
+            return "hard"
 
-        d_an = D.gather(1, neg_idx.unsqueeze(1)).squeeze(1)
+    def get_mining_ratio_with_warmup(self, base_ratio: float, current_epoch: int,
+                                   mining_start_epoch: int, warmup_epochs: int = 2) -> float:
+        """
+        Apply mining ratio warmup for gradual introduction of mining.
 
-        return d_ap, d_an
+        Args:
+            base_ratio: Target mining ratio (0.0-1.0)
+            current_epoch: Current training epoch
+            mining_start_epoch: Epoch when mining starts
+            warmup_epochs: Number of epochs to gradually increase mining ratio
+
+        Returns:
+            Effective mining ratio for the current epoch
+        """
+        if current_epoch < mining_start_epoch:
+            return 0.0  # No mining before start epoch
+
+        epochs_since_start = current_epoch - mining_start_epoch
+        if epochs_since_start < warmup_epochs:
+            # Linear warmup from 0.0 to base_ratio
+            warmup_progress = epochs_since_start / warmup_epochs
+            return base_ratio * warmup_progress
+        else:
+            # Full mining ratio after warmup
+            return base_ratio
 
 
 def compute_metrics(eval_pred) -> Dict[str, float]:

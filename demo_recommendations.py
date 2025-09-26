@@ -199,6 +199,11 @@ def main():
                        help="Path to chunks directory")
     parser.add_argument("--splits_type", type=str, default="test", choices=["train", "test", "both"],
                        help="Which splits to use")
+    # New 5-fold data arguments
+    parser.add_argument("--fold_dir", type=str, default=None,
+                       help="Path to fold directory (e.g., precomp_5Fold_7Gen_3Chunk/fold_0/)")
+    parser.add_argument("--data_split", type=str, default="test", choices=["train", "test"],
+                       help="Which data split to use from fold ('train' or 'test')")
     parser.add_argument("--load_embeddings", type=str, default=None,
                        help="Load precomputed embeddings from file")
     parser.add_argument("--save_embeddings", type=str, default=None,
@@ -218,7 +223,14 @@ def main():
     # Load embeddings
     if args.load_embeddings:
         recommender.load_embeddings(args.load_embeddings)
+    elif args.fold_dir:
+        # Use new 5-fold data structure
+        recommender.load_embeddings_from_fold(
+            fold_dir=args.fold_dir,
+            data_split=args.data_split
+        )
     else:
+        # Use legacy splits.json structure
         recommender.load_embeddings_from_splits(
             splits_file=args.splits_file,
             chunks_dir=args.chunks_dir,

@@ -47,8 +47,7 @@
         "set_float32_matmul_precision": "high",
         "enable_early_stopping": true,
         "early_stopping_patience": 3,
-        "early_stopping_min_delta": 0.01,
-        "post_resample_grace_epochs": 2
+        "early_stopping_min_delta": 0.01
     },
     "data": {
         "chunks_train_dir": null,

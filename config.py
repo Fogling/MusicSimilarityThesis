@@ -67,6 +67,12 @@ class TrainingConfig:
     margin_schedule_end_epoch: int = 10  # Epoch where margin reaches max value
     margin_schedule_max: float = 0.8    # Maximum margin value
     gradient_clip_norm: float = 1.0     # Gradient clipping norm
+
+    # Dynamic margin reduction for hard mining
+    mining_margin_reduction: bool = False  # Enable margin reduction during hard mining
+    mining_margin_value: float = 0.5       # Margin value when hard mining starts
+    mining_margin_recovery_epochs: int = 3 # Epochs to recover margin after hard mining starts
+    mining_margin_final: float = 0.6       # Final margin after recovery
     
     # Learning rate scheduler configuration
     use_custom_lr: bool = True  # Use custom dual-group LR scheduler
@@ -100,7 +106,6 @@ class TrainingConfig:
     enable_early_stopping: bool = False  # Enable early stopping based on eval_accuracy
     early_stopping_patience: int = 5  # Number of epochs without improvement before stopping
     early_stopping_min_delta: float = 0.001  # Minimum improvement threshold to reset patience
-    post_resample_grace_epochs: int = 2  # Grace period after resampling before early stopping can trigger
 
     # GPU configuration
     force_single_gpu: bool = False  # Force single GPU mode even with multiple GPUs available
@@ -145,8 +150,20 @@ class DataConfig:
     resample_cadence: int = 1           # Resample every N epochs (e.g., 3 = every 3rd epoch starting from epoch 3)
     resample_start_epoch: int = 1       # Epoch to start resampling (e.g., 3 = start resampling from epoch 3)
     resample_schedule_override: Optional[Dict[int, float]] = None  # Override resampling for specific epochs {epoch: fraction}
-    negative_mining: str = "none"       # Choose mining strategy: "none", "semi_hard", or "hard"
+    # Negative mining configuration (enhanced system)
+    negative_mining: str = "none"       # Choose mining strategy: "none", "semi_hard", "hard", or "progressive"
     negative_mining_start_epoch: int = 1  # Epoch to start negative mining (0 = from beginning)
+
+    # Progressive mining configuration
+    mining_progression_epochs: int = 3    # Epochs of semi-hard before switching to hard (for "progressive" strategy)
+
+    # Partial batch mining configuration (bonus feature)
+    mining_ratio: float = 1.0            # Fraction of batch to apply mining to (0.0-1.0, 1.0 = mine all samples)
+    mining_warmup_epochs: int = 2        # Gradually increase mining ratio over N epochs
+
+    # Advanced mining options
+    mining_curriculum_factor: float = 0.5 # Curriculum learning factor (reserved for future use)
+    mining_momentum: float = 0.0         # Momentum for mining selection (reserved for future use)
     
     # Stratified batching configuration  
     stratified_batching: bool = False      # Enable balanced subgenre representation per batch
@@ -241,8 +258,47 @@ class ExperimentConfig:
     
     def validate(self) -> None:
         """Validate the complete configuration."""
-        # Skip all validation - let the training scripts handle everything
-        pass
+        # Validate negative mining configuration
+        valid_mining_strategies = {"none", "semi_hard", "hard", "progressive"}
+        if self.data.negative_mining not in valid_mining_strategies:
+            raise ValueError(f"Invalid negative_mining strategy: {self.data.negative_mining}. "
+                           f"Must be one of: {valid_mining_strategies}")
+
+        if self.data.negative_mining_start_epoch < 0:
+            raise ValueError("negative_mining_start_epoch must be non-negative")
+
+        if self.data.mining_progression_epochs < 1:
+            raise ValueError("mining_progression_epochs must be at least 1")
+
+        if not (0.0 <= self.data.mining_ratio <= 1.0):
+            raise ValueError("mining_ratio must be between 0.0 and 1.0")
+
+        if self.data.mining_warmup_epochs < 0:
+            raise ValueError("mining_warmup_epochs must be non-negative")
+
+        # Validate dynamic margin reduction configuration
+        if self.training.mining_margin_reduction:
+            if not (0.0 < self.training.mining_margin_value < 1.0):
+                raise ValueError("mining_margin_value must be between 0.0 and 1.0")
+
+            if not (0.0 < self.training.mining_margin_final < 1.0):
+                raise ValueError("mining_margin_final must be between 0.0 and 1.0")
+
+            if self.training.mining_margin_recovery_epochs < 0:
+                raise ValueError("mining_margin_recovery_epochs must be non-negative")
+
+            if self.training.mining_margin_value >= self.training.margin_schedule_max:
+                raise ValueError("mining_margin_value should be less than margin_schedule_max for meaningful reduction")
+
+        # Validate basic training parameters
+        if self.training.batch_size <= 0:
+            raise ValueError("Batch size must be positive")
+
+        if self.training.learning_rate <= 0:
+            raise ValueError("Learning rate must be positive")
+
+        if self.training.triplet_margin < 0:
+            raise ValueError("Triplet margin must be non-negative")
 
 
 def create_default_config(test_run: bool = False) -> ExperimentConfig:

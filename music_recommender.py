@@ -262,6 +262,62 @@ class MusicRecommender:
 
         logger.info(f"Loaded embeddings for {len(self.track_embeddings)} tracks across {len(self.subgenre_to_tracks)} subgenres")
 
+    def load_embeddings_from_fold(self, fold_dir: str, data_split: str = "test") -> None:
+        """
+        Load and compute embeddings from 5-fold precomputed data structure.
+
+        Args:
+            fold_dir: Path to fold directory (e.g., precomp_5Fold_7Gen_3Chunk/fold_0/)
+            data_split: Which split to use - 'train' or 'test'
+        """
+        fold_path = Path(fold_dir)
+        chunks_path = fold_path / f"{data_split}_chunks"
+
+        if not chunks_path.exists():
+            raise FileNotFoundError(f"Chunks directory not found: {chunks_path}")
+
+        logger.info(f"Loading embeddings from {chunks_path}")
+
+        # Organize tracks by chunks - scan subgenre directories
+        track_chunks = defaultdict(lambda: defaultdict(lambda: [None, None, None]))
+
+        for subgenre_dir in chunks_path.iterdir():
+            if not subgenre_dir.is_dir():
+                continue
+
+            subgenre = subgenre_dir.name
+            logger.info(f"Processing {subgenre}")
+
+            # Find all chunk files in this subgenre
+            for chunk_file in subgenre_dir.glob("*_chunk*.pt"):
+                try:
+                    filename = chunk_file.stem  # Remove .pt extension
+
+                    # Extract track name and chunk number
+                    if filename.endswith("_chunk1"):
+                        track_name = filename[:-7]  # Remove _chunk1
+                        chunk_idx = 0
+                    elif filename.endswith("_chunk2"):
+                        track_name = filename[:-7]  # Remove _chunk2
+                        chunk_idx = 1
+                    elif filename.endswith("_chunk3"):
+                        track_name = filename[:-7]  # Remove _chunk3
+                        chunk_idx = 2
+                    else:
+                        logger.warning(f"Unexpected chunk file format: {chunk_file}")
+                        continue
+
+                    track_chunks[subgenre][track_name][chunk_idx] = str(chunk_file)
+
+                except Exception as e:
+                    logger.warning(f"Failed to process chunk file {chunk_file}: {e}")
+                    continue
+
+        # Compute embeddings for each track
+        self._compute_track_embeddings(track_chunks)
+
+        logger.info(f"Loaded embeddings for {len(self.track_embeddings)} tracks across {len(self.subgenre_to_tracks)} subgenres")
+
     def _compute_track_embeddings(self, track_chunks: Dict[str, Dict[str, List[str]]]) -> None:
         """Compute embeddings for all tracks by averaging their chunks"""
 
@@ -326,7 +382,7 @@ class MusicRecommender:
     def precompute_similarity_matrix(self) -> None:
         """Precompute similarity matrix for faster recommendations"""
         if not self.track_embeddings:
-            raise ValueError("No embeddings loaded. Call load_embeddings_from_splits() first.")
+            raise ValueError("No embeddings loaded. Call load_embeddings_from_splits() or load_embeddings_from_fold() first.")
 
         logger.info("Precomputing similarity matrix...")
 
@@ -587,6 +643,11 @@ def main():
                        help="Path to chunks directory (default: from config)")
     parser.add_argument("--splits_type", type=str, default="test", choices=["train", "test", "both"],
                        help="Which splits to use for embeddings")
+    # New 5-fold data arguments
+    parser.add_argument("--fold_dir", type=str, default=None,
+                       help="Path to fold directory (e.g., precomp_5Fold_7Gen_3Chunk/fold_0/)")
+    parser.add_argument("--data_split", type=str, default="test", choices=["train", "test"],
+                       help="Which data split to use from fold ('train' or 'test')")
 
     # Recommendation options
     parser.add_argument("--query_track", type=str, default=None,
@@ -630,7 +691,14 @@ def main():
     # Load embeddings
     if args.load_embeddings:
         recommender.load_embeddings(args.load_embeddings)
+    elif args.fold_dir:
+        # Use new 5-fold data structure
+        recommender.load_embeddings_from_fold(
+            fold_dir=args.fold_dir,
+            data_split=args.data_split
+        )
     else:
+        # Use legacy splits.json structure
         recommender.load_embeddings_from_splits(
             splits_file=args.splits_file,
             chunks_dir=args.chunks_dir,

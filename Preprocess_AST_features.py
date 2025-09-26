@@ -55,7 +55,7 @@ class PreprocessingConfig:
     output_dir: str = "precomputed_AST"
 
     # Audio processing
-    chunk_duration: float = 10.0  # seconds - optimized for AST max_length 1024
+    chunk_duration: float = 10.24 # seconds - optimized for AST max_length 1024
     max_chunks_per_file: int = 3  # Reduced from 9 to avoid pseudo-duplicates
     target_sample_rate: int = 16000
     audio_extensions: Tuple[str, ...] = (".mp3", ".wav", ".flac", ".ogg")
